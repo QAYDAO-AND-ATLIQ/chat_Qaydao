@@ -1,0 +1,26 @@
+:root {
+  /* QAYDAO Main Colors */
+  --color-primary: #1a1a1a;        /* QAYDAO Black */
+  --color-primary-dark: #000000;
+  --color-primary-light: #333333;
+  --color-secondary: #c9a84c;      /* QAYDAO Gold */
+  --color-accent: #c9a84c;
+
+  /* Arabic Font */
+  --font-family-default: 'Cairo', 'Tajawal', sans-serif;
+}
+
+/* RTL Support Enhancement */
+[dir="rtl"] .sidebar {
+  right: 0;
+  left: auto;
+}
+
+[dir="rtl"] .sidebar-title {
+  text-align: right;
+}
+
+/* Widget color override */
+.woot-widget-bubble {
+  background-color: #c9a84c !important;
+}
