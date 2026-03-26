@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QAYDAO — تجربة خدمة العملاء</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}
+.header{background:linear-gradient(135deg,#0d4f4a,#0f766e 50%,#14b8a6);color:#fff;padding:30px 24px;text-align:center}
+.header h1{font-size:28px;font-weight:900;margin-bottom:6px}
+.header p{font-size:15px;opacity:.85}
+.badge{display:inline-block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);padding:4px 16px;border-radius:999px;font-size:12px;margin-bottom:12px;backdrop-filter:blur(4px)}
+.container{max-width:900px;margin:0 auto;padding:30px 24px}
+.alert{padding:16px 20px;border-radius:12px;margin-bottom:20px;font-size:14px;display:flex;gap:10px;align-items:flex-start;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+.alert-warn{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
+.alert-icon{font-size:18px;flex-shrink:0}
+.scenarios{display:grid;gap:16px;margin:20px 0}
+.scenario{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;cursor:pointer;transition:.2s}
+.scenario:hover{border-color:#14b8a6;box-shadow:0 4px 16px rgba(0,0,0,.06);transform:translateY(-2px)}
+.scenario h3{font-size:16px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.scenario p{font-size:13px;color:#64748b;line-height:1.8}
+.scenario .msg{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px 16px;margin-top:10px;font-size:13px;color:#0d4f4a;font-weight:600;direction:rtl}
+.scenario .copy-btn{display:inline-block;margin-top:8px;padding:6px 14px;background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Cairo'}
+.scenario .copy-btn:hover{background:#0d4f4a}
+.section-title{font-size:20px;font-weight:800;margin:30px 0 16px;color:#0d4f4a;display:flex;align-items:center;gap:10px}
+.steps{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px;margin-bottom:20px}
+.step{display:flex;gap:14px;margin-bottom:16px}
+.step:last-child{margin-bottom:0}
+.step-n{width:32px;height:32px;border-radius:50%;background:#0f766e;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+.step-c h4{font-size:14px;font-weight:700;margin-bottom:2px}
+.step-c p{font-size:13px;color:#64748b}
+.footer{text-align:center;padding:30px 24px;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0;margin-top:40px}
+.tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700}
+.tag-green{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+.tag-blue{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe}
+</style>
+</head>
+<body>
+
+<div class="header">
+<div class="badge">🧪 صفحة تجريبية — للموظفين فقط</div>
+<h1>تجربة نظام خدمة العملاء</h1>
+<p>هذه الصفحة مخصصة لتجربة النظام كعميل — استخدم الشات في أسفل الصفحة لإرسال رسائل تجريبية</p>
+</div>
+
+<div class="container">
+
+<div class="alert">
+<span class="alert-icon">💡</span>
+<div><strong>كيف تستخدم هذه الصفحة:</strong> اضغط على أيقونة الشات 💬 في أسفل يسار الشاشة وأرسل رسالة كأنك عميل. ستظهر رسالتك في <strong>chat.qaydao.com</strong> عند الموظف المناوب.</div>
+</div>
+
+<div class="alert alert-warn">
+<span class="alert-icon">⚠️</span>
+<div><strong>تنبيه:</strong> هذه صفحة تجريبية فقط. لا ترسل بيانات حقيقية. الهدف هو تدريب الفريق على النظام قبل إطلاقه للعملاء الحقيقيين.</div>
+</div>
+
+<div class="section-title">📋 خطوات التجربة</div>
+<div class="steps">
+<div class="step"><div class="step-n">1</div><div class="step-c"><h4>افتح الشات</h4><p>اضغط على أيقونة الشات 💬 في أسفل يسار الشاشة</p></div></div>
+<div class="step"><div class="step-n">2</div><div class="step-c"><h4>أرسل رسالة كعميل</h4><p>اختر أحد السيناريوهات أدناه وانسخ الرسالة، أو اكتب رسالتك الخاصة</p></div></div>
+<div class="step"><div class="step-n">3</div><div class="step-c"><h4>افتح Chatwoot في تبويب ثاني</h4><p>ادخل <strong>chat.qaydao.com</strong> بحساب موظف وشوف المحادثة وصلت</p></div></div>
+<div class="step"><div class="step-n">4</div><div class="step-c"><h4>رد على المحادثة</h4><p>طبّق الخطوات اللي تعلمتها من الدليل: صنّف، حدد الأولوية، ورد</p></div></div>
+<div class="step"><div class="step-n">5</div><div class="step-c"><h4>أغلق وقيّم</h4><p>بعد ما تحل المشكلة، أغلق المحادثة وشوف تقييم CSAT</p></div></div>
+</div>
+
+<div class="section-title">🎭 سيناريوهات تجريبية</div>
+<p style="font-size:14px;color:#64748b;margin-bottom:16px">انسخ أي رسالة من السيناريوهات التالية وأرسلها في الشات لتجربة النظام:</p>
+
+<div class="scenarios">
+
+<div class="scenario">
+<h3><span class="tag tag-green">طلب جديد</span> عميل يبي يشتري كنب</h3>
+<p>عميل فردي يبحث عن كنب لغرفة المعيشة. يجب تصنيفه كـ "طلب_جديد" + "عميل_عادي" + أولوية "عادي"</p>
+<div class="msg">السلام عليكم، أبي كنب مودرن لغرفة المعيشة، ميزانيتي حوالي 5000 ريال. وش عندكم؟</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+</div>
+
+<div class="scenario">
+<h3><span class="tag tag-blue">استفسار</span> سؤال عن التوصيل</h3>
+<p>عميل يسأل عن مناطق التوصيل والمدة. تصنيف: "استفسار" + أولوية "عادي"</p>
+<div class="msg">مرحبا، هل توصلون لمنطقة أبحر الشمالية بجدة؟ وكم المدة؟</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+</div>
+
+<div class="scenario">
+<h3><span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca" class="tag">شكوى عاجلة</span> عميل VIP غاضب</h3>
+<p>عميل VIP متكرر عنده مشكلة حرجة. يجب: "شكوى" + "VIP" + أولوية "عاجل" + SLA 5 دقائق!</p>
+<div class="msg">أنا عميل عندكم من سنتين وأشتري شهرياً! طلبت طاولة طعام قبل أسبوعين وما وصلتني ولا أحد يرد علي! هذا آخر تعامل معكم!</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+</div>
+
+<div class="scenario">
+<h3><span style="background:#ecfeff;color:#0891b2;border:1px solid #a5f3fc" class="tag">B2B</span> شركة تبي تأثيث مكتب</h3>
+<p>شركة تبي تأثيث مشروع كامل. يجب: "تأثيث_مشروع" + "شركات" + تحويل لفريق B2B</p>
+<div class="msg">السلام عليكم، أنا من شركة المستقبل للمقاولات. نحتاج تأثيث مكتب جديد 30 موظف (مكاتب + كراسي + طاولة اجتماعات + استقبال). نبي عرض سعر شامل.</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+</div>
+
+<div class="scenario">
+<h3><span style="background:#fff7ed;color:#ea580c;border:1px solid #fed7aa" class="tag">شحن</span> متابعة شحنة</h3>
+<p>عميل يتابع طلبه. تصنيف: "الشحن" + تحويل لفريق الشحن</p>
+<div class="msg">مرحبا، طلبي رقم QD-2024-1587 المفروض يوصل أمس وما وصل. وين طلبي؟</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+</div>
+
+<div class="scenario">
+<h3><span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca" class="tag">إرجاع</span> طلب إرجاع منتج</h3>
+<p>عميل يبي يرجع منتج. تصنيف: "الإرجاع" + أولوية "متوسط"</p>
+<div class="msg">أبي أرجع الكرسي اللي اشتريته الأسبوع الماضي. اللون مختلف عن الصورة في الموقع. رقم الطلب QD-2024-1592</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+</div>
+
+<div class="scenario">
+<h3><span style="background:#fff7ed;color:#ea580c;border:1px solid #fed7aa" class="tag">صيانة</span> طلب صيانة</h3>
+<p>عميل يحتاج صيانة. تصنيف: "صيانة" + أولوية "عادي"</p>
+<div class="msg">مرحبا، اشتريت منكم سرير قبل 6 شهور والآلية اللي ترفع الرأس ما تشتغل. هل عندكم خدمة صيانة؟</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+</div>
+
+</div>
+
+<div class="section-title">✅ قائمة التحقق للموظف</div>
+<div class="steps">
+<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل صنّفت المحادثة؟</h4><p>أضف تصنيف نوع الطلب (شحن/إرجاع/استفسار/شكوى/طلب جديد/صيانة/تأثيث/B2B)</p></div></div>
+<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل حددت الأولوية؟</h4><p>عاجل (أحمر) / متوسط (برتقالي) / عادي (أخضر)</p></div></div>
+<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل صنّفت العميل؟</h4><p>VIP / شركات / مورد / عميل عادي / عميل مشاريع</p></div></div>
+<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل رديت خلال SLA؟</h4><p>عاجل: 5 دقائق | متوسط: 30 دقيقة | عادي: ساعة</p></div></div>
+<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل حوّلت للقسم الصحيح؟</h4><p>مبيعات / دعم فني / B2B / شحن</p></div></div>
+<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل استخدمت Captain AI؟</h4><p>جرّب اقتراح الرد الذكي (✨) أو تحسين النص</p></div></div>
+</div>
+
+</div>
+
+<div class="footer">
+<p><strong>QAYDAO</strong> — صفحة تجربة نظام خدمة العملاء</p>
+<p style="margin-top:6px">دليل الموظفين: <a href="https://chat.qaydao.com/guide/" style="color:#0f766e">chat.qaydao.com/guide</a> | نظام المحادثات: <a href="https://chat.qaydao.com" style="color:#0f766e">chat.qaydao.com</a></p>
+</div>
+
+<!-- Chatwoot Widget -->
+<script>
+(function(d,t) {
+  var BASE_URL="https://chat.qaydao.com";
+  var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+  g.src=BASE_URL+"/packs/js/sdk.js";
+  g.defer=true;
+  g.async=true;
+  s.parentNode.insertBefore(g,s);
+  g.onload=function(){
+    window.chatwootSDK.run({
+      websiteToken: 'Js7E1tDg4uwadUDt8g7jaiUu',
+      baseUrl: BASE_URL
+    })
+  }
+})(document,"script");
+
+function copyMsg(btn) {
+  var msg = btn.previousElementSibling.textContent;
+  navigator.clipboard.writeText(msg).then(function() {
+    btn.textContent = '✅ تم النسخ!';
+    setTimeout(function() { btn.textContent = '📋 نسخ الرسالة'; }, 2000);
+  });
+}
+</script>
+
+</body>
+</html>

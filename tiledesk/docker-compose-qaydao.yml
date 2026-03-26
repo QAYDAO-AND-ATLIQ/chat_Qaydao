@@ -1,0 +1,398 @@
+version: "3.7"
+
+# ===== TILEDESK for QAYDAO =====
+# Isolated network: tiledesk_network
+# All ports remapped to avoid conflicts
+# Domain: ai.qaydao.com
+
+volumes:
+  tiledesk-datadb:
+    name: tiledesk_datadb
+  tiledesk-qdrant:
+    name: tiledesk_qdrant
+  tiledesk-redis:
+    name: tiledesk_redis
+  tiledesk-rabbitmq:
+    name: tiledesk_rabbitmq
+
+networks:
+  tiledesk_network:
+    name: tiledesk_network
+    driver: bridge
+
+services:
+
+  # ===== DATABASE =====
+  td-mongo:
+    container_name: td_mongo
+    image: "mongo:7.0.2"
+    command: "--bind_ip_all"
+    restart: unless-stopped
+    volumes:
+      - "tiledesk-datadb:/data/db"
+    networks:
+      - tiledesk_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  td-redis:
+    container_name: td_redis
+    image: "redis:7.0.5"
+    restart: unless-stopped
+    volumes:
+      - "tiledesk-redis:/data"
+    networks:
+      - tiledesk_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  td-rabbitmq:
+    image: chat21/chat21-rabbitmq
+    container_name: td_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "${RABBITMQ_ERLANG_COOKIE}"
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_DEFAULT_USER}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_DEFAULT_PASS}"
+    volumes:
+      - "tiledesk-rabbitmq:/var/lib/rabbitmq"
+    networks:
+      - tiledesk_network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "5672"]
+      interval: 5s
+      timeout: 15s
+      retries: 1
+
+  td-qdrant:
+    image: "qdrant/qdrant:latest"
+    container_name: td_qdrant
+    restart: unless-stopped
+    volumes:
+      - "tiledesk-qdrant:/qdrant/storage"
+    networks:
+      - tiledesk_network
+
+  # ===== CORE SERVER =====
+  td-server:
+    image: "tiledesk/tiledesk-server:2.13.23-op1"
+    container_name: td_server
+    restart: always
+    environment:
+      - LOG_LEVEL=info
+      - CHAT21_ENABLED=true
+      - CHAT21_ENGINE=mqtt
+      - "CHAT21_URL=http://td-chat21http:8004"
+      - CHAT21_JWT_SECRET=tokenKey
+      - CHAT21_APPID=tilechat
+      - RESTHOOK_ENABLED=true
+      - ALLOW_REOPEN_CHAT=true
+      - "CHAT21_ADMIN_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzNDU2MTBkNy03MmYxLTQ5OWUtODQzMS0xMTNhZWJkOWVmOTgiLCJzdWIiOiIxMDAtQVBJQURNSU4iLCJzY29wZSI6WyJyYWJiaXRtcS5yZWFkOiovKi8qIiwicmFiYml0bXEud3JpdGU6Ki8qLyoiLCJyYWJiaXRtcS5jb25maWd1cmU6Ki8qLyoiXSwiY2xpZW50X2lkIjoiMTAwLUFQSUFETUlOIiwiY2lkIjoiMTAwLUFQSUFETUlOIiwiYXpwIjoiMTAwLUFQSUFETUlOIiwidXNlcl9pZCI6IjEwMC1BUElBRE1JTiIsImFwcF9pZCI6InRpbGVjaGF0IiwiaWF0IjoxNjE0OTQzNDkyLCJleHAiOjE5MjU5ODM0OTIsImF1ZCI6WyJyYWJiaXRtcSIsIjEwMC1BUElBRE1JTiJdLCJraWQiOiJ0aWxlZGVzay1rZXkiLCJ0aWxlZGVza19hcGlfcm9sZXMiOiJhZG1pbiJ9.KptGMsTKjd3wUiiP1GGSTYqW1XXK1vjSRJnetC3wjxU"
+      - "AMQP_MANAGER_URL=amqp://ignored:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NjMwYTAwZS0xNTUxLTQ3Y2ItYmEzMC02NGRlNjJmYmNmNGYiLCJzdWIiOiIwMS1PQlNFUlZFUiIsInNjb3BlIjpbInJhYmJpdG1xLnJlYWQ6Ki8qLyoiLCJyYWJiaXRtcS53cml0ZToqLyovKiIsInJhYmJpdG1xLmNvbmZpZ3VyZToqLyovKiJdLCJjbGllbnRfaWQiOiIwMS1PQlNFUlZFUiIsImNpZCI6IjAxLU9CU0VSVkVSIiwiYXpwIjoiMDEtT0JTRVJWRVIiLCJ1c2VyX2lkIjoiMDEtT0JTRVJWRVIiLCJhcHBfaWQiOiJ0aWxlY2hhdCIsImlhdCI6MTY5NjQ5MjI4NywiZXhwIjoyMDA3NTMyMjg3LCJhdWQiOlsicmFiYml0bXEiLCIwMS1PQlNFUlZFUiJdLCJraWQiOiJ0aWxlZGVzay1rZXkiLCJ0aWxlZGVza19hcGlfcm9sZXMiOiJ1c2VyIn0.Lq0MLTYny7tIYVQ-KEDLlL-h7gAqofCfC2IDgI_0TOE@td-rabbitmq:5672?heartbeat=60"
+      - "MONGODB_URI=mongodb://td-mongo/tiledesk"
+      - EMAIL_ENABLED=${EMAIL_ENABLED}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_SECURE=${EMAIL_SECURE}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
+      - "EMAIL_BASEURL=${EXTERNAL_BASE_URL}/dashboard"
+      - "WEBHOOK_ORIGIN=${EXTERNAL_BASE_URL}/api/"
+      - "WIDGET_LOCATION=${EXTERNAL_BASE_URL}/widget/"
+      - WS_SERVER_PATH=${WS_SERVER_PATH}
+      - LICENSE_KEY=${LICENSE_KEY}
+      - CACHE_ENABLED=true
+      - CACHE_ENGINE=redis
+      - CACHE_REDIS_HOST=td-redis
+      - CACHE_REDIS_PORT=6379
+      - APPS_ACCESS_TOKEN_SECRET=nodeauthsecret
+      - BOOT_LOADING=true
+      - "META_GRAPH_URL=https://graph.facebook.com/v20.0/"
+      - "TELEGRAM_API_URL=https://api.telegram.org/bot"
+      - "TELEGRAM_FILE_URL=https://api.telegram.org/file/bot"
+      - TELEGRAM_LOG=info
+      - "BASE_FILE_URL=${EXTERNAL_BASE_URL}/api/"
+      - GPTKEY=${GPTKEY}
+      - "AI_MODELS=gpt-4o:4;gpt-4o-mini:0.3;gpt-4-turbo-preview:12;gpt-3.5-turbo:0.6"
+      - "OPENAI_ENDPOINT=https://api.openai.com/v1"
+      - "KB_ENDPOINT_TRAIN=http://td-llm-train:8000/api"
+      - "KB_ENDPOINT_QA=http://td-llm-qa:8000/api"
+      - VECTOR_STORE_NAME=qdrant
+      - INDEX_TYPE=serverless
+      - INDEX_NAME=tiledesk-llm
+      - VECTOR_SIZE=1536
+      - VECTOR_STORE_HOST=td-qdrant
+      - VECTOR_STORE_PORT=6333
+      - VECTOR_STORE_DEPLOYMENT=local
+      - JOB_TOPIC_EXCHANGE_TRAIN=tiledesk-trainer
+      - JWT_SECRET_KEY=tokenKey
+      - COMMUNITY_VERSION=true
+      - QUOTES_ENABLED=false
+      - "TILEBOT_ENDPOINT=http://td-chatbot:3000"
+    depends_on:
+      td-mongo:
+        condition: service_healthy
+      td-rabbitmq:
+        condition: service_healthy
+    networks:
+      - tiledesk_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # ===== CHAT ENGINE =====
+  td-chat21http:
+    image: "chat21/chat21-http-server:0.2.37"
+    container_name: td_chat21http
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - "MONGODB_URI=mongodb://td-mongo/chat21"
+      - JWT_KEY=tokenKey
+      - "RABBITMQ_URI=amqp://ignored:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiMjM1OTFmZS05N2FhLTRmNWQtOGVlOS0yNjQ2NzljYmM0M2YiLCJzdWIiOiIxMDAtQVBJQURNSU4iLCJzY29wZSI6WyJyYWJiaXRtcS5yZWFkOiovKi8qIiwicmFiYml0bXEud3JpdGU6Ki8qLyoiLCJyYWJiaXRtcS5jb25maWd1cmU6Ki8qLyoiXSwiY2xpZW50X2lkIjoiMTAwLUFQSUFETUlOIiwiY2lkIjoiMTAwLUFQSUFETUlOIiwiYXpwIjoiMTAwLUFQSUFETUlOIiwidXNlcl9pZCI6IjEwMC1BUElBRE1JTiIsImFwcF9pZCI6InRpbGVjaGF0IiwiaWF0IjoxNjk2NDkyMjg3LCJleHAiOjIwMDc1MzIyODcsImF1ZCI6WyJyYWJiaXRtcSIsIjEwMC1BUElBRE1JTiJdLCJraWQiOiJ0aWxlZGVzay1rZXkiLCJ0aWxlZGVza19hcGlfcm9sZXMiOiJhZG1pbiJ9.Ee-TpAPsoC7Dm7qsbUojeHud3E4OCtJZkpupu_R0Aic@td-rabbitmq:5672?heartbeat=60"
+      - PUSH_ENABLED=false
+      - CHAT21HTTP_CACHE_ENABLED=false
+      - "CONTACTS_LOOKUP_ENDPOINT=http://td-server:3000/users_util"
+      - "PUSH_WH_NOTIFY_URL=http://localhost:8004/api/tilechat/notify"
+      - "PUSH_WH_WEBHOOK_TOKEN=WHFyAhecCMkYsvldLFWbSrJt7lAZFAmrp7O5QVMvGQsLVn9SkfT"
+    depends_on:
+      td-mongo:
+        condition: service_started
+      td-rabbitmq:
+        condition: service_healthy
+    networks:
+      - tiledesk_network
+
+  td-chat21server:
+    image: "chat21/chat21-server:0.2.53"
+    container_name: td_chat21server
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - "MONGODB_URI=mongodb://td-mongo/chat21"
+      - APP_ID=tilechat
+      - "WEBHOOK_ENDPOINTS=http://td-server:3000/chat21/requests,http://td-chat21http:8004/api/tilechat/push/webhook/endpoint/WHFyAhecCMkYsvldLFWbSrJt7lAZFAmrp7O5QVMvGQsLVn9SkfT"
+      - WEBHOOK_ENABLED=true
+      - "WEBHOOK_EVENTS=message-sent,message-delivered,conversation-unarchived"
+      - "RABBITMQ_URI=amqp://ignored:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NjMwYTAwZS0xNTUxLTQ3Y2ItYmEzMC02NGRlNjJmYmNmNGYiLCJzdWIiOiIwMS1PQlNFUlZFUiIsInNjb3BlIjpbInJhYmJpdG1xLnJlYWQ6Ki8qLyoiLCJyYWJiaXRtcS53cml0ZToqLyovKiIsInJhYmJpdG1xLmNvbmZpZ3VyZToqLyovKiJdLCJjbGllbnRfaWQiOiIwMS1PQlNFUlZFUiIsImNpZCI6IjAxLU9CU0VSVkVSIiwiYXpwIjoiMDEtT0JTRVJWRVIiLCJ1c2VyX2lkIjoiMDEtT0JTRVJWRVIiLCJhcHBfaWQiOiJ0aWxlY2hhdCIsImlhdCI6MTY5NjQ5MjI4NywiZXhwIjoyMDA3NTMyMjg3LCJhdWQiOlsicmFiYml0bXEiLCIwMS1PQlNFUlZFUiJdLCJraWQiOiJ0aWxlZGVzay1rZXkiLCJ0aWxlZGVza19hcGlfcm9sZXMiOiJ1c2VyIn0.Lq0MLTYny7tIYVQ-KEDLlL-h7gAqofCfC2IDgI_0TOE@td-rabbitmq:5672?heartbeat=60"
+    depends_on:
+      td-rabbitmq:
+        condition: service_healthy
+      td-mongo:
+        condition: service_started
+      td-server:
+        condition: service_started
+    networks:
+      - tiledesk_network
+
+  # ===== AI / LLM =====
+  td-chatbot:
+    image: "tiledesk/tiledesk-chatbot:2.0.32-rc8"
+    container_name: td_chatbot
+    restart: unless-stopped
+    environment:
+      - "API_ENDPOINT=http://td-server:3000"
+      - "TILEBOT_ENDPOINT=http://td-chatbot:3000"
+      - "API_URL=${EXTERNAL_BASE_URL}/api"
+      - "MONGODB_URI=mongodb://td-mongo/tiledesk"
+      - CACHE_ENABLED=true
+      - CACHE_REDIS_HOST=td-redis
+      - CACHE_REDIS_PORT=6379
+      - TILEBOT_LOG=info
+      - FLOW_LOGS_ENABLED=true
+      - "AMQP_MANAGER_URL=amqp://ignored:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NjMwYTAwZS0xNTUxLTQ3Y2ItYmEzMC02NGRlNjJmYmNmNGYiLCJzdWIiOiIwMS1PQlNFUlZFUiIsInNjb3BlIjpbInJhYmJpdG1xLnJlYWQ6Ki8qLyoiLCJyYWJiaXRtcS53cml0ZToqLyovKiIsInJhYmJpdG1xLmNvbmZpZ3VyZToqLyovKiJdLCJjbGllbnRfaWQiOiIwMS1PQlNFUlZFUiIsImNpZCI6IjAxLU9CU0VSVkVSIiwiYXpwIjoiMDEtT0JTRVJWRVIiLCJ1c2VyX2lkIjoiMDEtT0JTRVJWRVIiLCJhcHBfaWQiOiJ0aWxlY2hhdCIsImlhdCI6MTY5NjQ5MjI4NywiZXhwIjoyMDA3NTMyMjg3LCJhdWQiOlsicmFiYml0bXEiLCIwMS1PQlNFUlZFUiJdLCJraWQiOiJ0aWxlZGVzay1rZXkiLCJ0aWxlZGVza19hcGlfcm9sZXMiOiJ1c2VyIn0.Lq0MLTYny7tIYVQ-KEDLlL-h7gAqofCfC2IDgI_0TOE@td-rabbitmq:5672?heartbeat=60"
+      - "AI_ENDPOINT=http://td-llm-train:8000/api"
+      - GPTKEY=${GPTKEY}
+      - "KB_ENDPOINT_TRAIN=http://td-llm-train:8000/api"
+      - "KB_ENDPOINT_QA=http://td-llm-qa:8000/api"
+    depends_on:
+      td-rabbitmq:
+        condition: service_healthy
+    networks:
+      - tiledesk_network
+
+  td-llm-train:
+    image: "tiledesk/tiledesk-backend-llm:0.5.3-rc1"
+    container_name: td_llm_train
+    restart: unless-stopped
+    environment:
+      - TIMEOUT=240
+      - REDIS_URL=redis://td-redis:6379
+      - TILELLM_ROLE=train
+      - WORKERS=3
+      - "MONGODB_URL=mongodb://td-mongo/tiledesk"
+      - "AMQP_MANAGER_URL=amqp://ignored:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NjMwYTAwZS0xNTUxLTQ3Y2ItYmEzMC02NGRlNjJmYmNmNGYiLCJzdWIiOiIwMS1PQlNFUlZFUiIsInNjb3BlIjpbInJhYmJpdG1xLnJlYWQ6Ki8qLyoiLCJyYWJiaXRtcS53cml0ZToqLyovKiIsInJhYmJpdG1xLmNvbmZpZ3VyZToqLyovKiJdLCJjbGllbnRfaWQiOiIwMS1PQlNFUlZFUiIsImNpZCI6IjAxLU9CU0VSVkVSIiwiYXpwIjoiMDEtT0JTRVJWRVIiLCJ1c2VyX2lkIjoiMDEtT0JTRVJWRVIiLCJhcHBfaWQiOiJ0aWxlY2hhdCIsImlhdCI6MTY5NjQ5MjI4NywiZXhwIjoyMDA3NTMyMjg3LCJhdWQiOlsicmFiYml0bXEiLCIwMS1PQlNFUlZFUiJdLCJraWQiOiJ0aWxlZGVzay1rZXkiLCJ0aWxlZGVza19hcGlfcm9sZXMiOiJ1c2VyIn0.Lq0MLTYny7tIYVQ-KEDLlL-h7gAqofCfC2IDgI_0TOE@td-rabbitmq:5672?heartbeat=60"
+      - JOB_TOPIC_EXCHANGE_TRAIN=tiledesk-trainer
+      - GPTKEY=${GPTKEY}
+      - TRAIN_PREFETCH=4
+      - JWT_SECRET_KEY=tokenKey
+      - TRAINER_LOG=info
+    depends_on:
+      td-rabbitmq:
+        condition: service_healthy
+      td-redis:
+        condition: service_healthy
+    networks:
+      - tiledesk_network
+
+  td-llm-qa:
+    image: "tiledesk/tiledesk-backend-llm:0.5.3-rc1"
+    container_name: td_llm_qa
+    restart: unless-stopped
+    environment:
+      - TIMEOUT=240
+      - REDIS_URL=redis://td-redis:6379
+      - TILELLM_ROLE=qa
+      - WORKERS=3
+      - "MONGODB_URL=mongodb://td-mongo/tiledesk"
+      - "AMQP_MANAGER_URL=amqp://ignored:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NjMwYTAwZS0xNTUxLTQ3Y2ItYmEzMC02NGRlNjJmYmNmNGYiLCJzdWIiOiIwMS1PQlNFUlZFUiIsInNjb3BlIjpbInJhYmJpdG1xLnJlYWQ6Ki8qLyoiLCJyYWJiaXRtcS53cml0ZToqLyovKiIsInJhYmJpdG1xLmNvbmZpZ3VyZToqLyovKiJdLCJjbGllbnRfaWQiOiIwMS1PQlNFUlZFUiIsImNpZCI6IjAxLU9CU0VSVkVSIiwiYXpwIjoiMDEtT0JTRVJWRVIiLCJ1c2VyX2lkIjoiMDEtT0JTRVJWRVIiLCJhcHBfaWQiOiJ0aWxlY2hhdCIsImlhdCI6MTY5NjQ5MjI4NywiZXhwIjoyMDA3NTMyMjg3LCJhdWQiOlsicmFiYml0bXEiLCIwMS1PQlNFUlZFUiJdLCJraWQiOiJ0aWxlZGVzay1rZXkiLCJ0aWxlZGVza19hcGlfcm9sZXMiOiJ1c2VyIn0.Lq0MLTYny7tIYVQ-KEDLlL-h7gAqofCfC2IDgI_0TOE@td-rabbitmq:5672?heartbeat=60"
+      - JOB_TOPIC_EXCHANGE_TRAIN=tiledesk-trainer
+      - GPTKEY=${GPTKEY}
+      - TRAIN_PREFETCH=4
+      - JWT_SECRET_KEY=tokenKey
+      - TRAINER_LOG=info
+    depends_on:
+      td-rabbitmq:
+        condition: service_healthy
+      td-redis:
+        condition: service_healthy
+    networks:
+      - tiledesk_network
+
+  # ===== FRONTEND =====
+  td-dashboard:
+    image: "tiledesk/tiledesk-dashboard:2.7.134-stage"
+    container_name: td_dashboard
+    restart: unless-stopped
+    environment:
+      - >-
+        FEATURES_TOKEN=PAY:F-ANA:T-ACT:T-TRI:T-GRO:T-DEP:T-OPH:T-MTL:T-CAR:T-PSA:F-MTT:T-SUP:T-LBS:T-APP:T-DEV:F-NOT:T-IPS:F-ETK:F-RAS:F-PPB:F-PET:F-MTS:F-TIL:T-DGF:T-NAT:T-HPB:F-TOW:F-KNB:T-GPT:T-BAN:F-AST:F-MON:T-CNT:F-AUT:F-WUN:F-INT:T-DPA:T
+      - BOT_CREDENTIAL_URL=/api/modules/dialogflow/botcredendials/
+      - "WIDGET_LOCATION=${EXTERNAL_BASE_URL}/widget/"
+      - SERVER_BASE_URL=/api/
+      - CHAT_BASE_URL=/chat/
+      - CDS_BASE_URL=/cds/
+      - WS_URL_RELATIVE=/ws/
+      - CHAT21_ENGINE=mqtt
+      - UPLOAD_ENGINE=native
+      - PUSH_ENGINE=none
+      - LOG_LEVEL=info
+      - APPS_URL=/api/modules/apps/
+      - API_BASEIMAGE_URL=/api/
+      - COMMUNITY_TEMPLATES_URL=/api/modules/templates/public/community
+      - TEMPLATES_URL=/api/modules/templates/public/templates
+      - FILE_UPLOAD_ACCEPT=*/*
+    networks:
+      - tiledesk_network
+
+  td-cds:
+    image: "tiledesk/design-studio:1.39.9-rc3"
+    container_name: td_cds
+    restart: unless-stopped
+    environment:
+      - >-
+        FEATURES_TOKEN=PAY:F-ANA:T-ACT:T-TRI:T-GRO:T-DEP:T-OPH:T-MTL:T-CAR:T-PSA:F-MTT:T-SUP:T-LBS:T-APP:T-DEV:F-NOT:T-IPS:F-ETK:F-RAS:F-PPB:F-PET:F-MTS:F-TIL:T-DGF:T-NAT:T-HPB:F-TOW:F-KNB:T-GPT:T-BAN:F-AST:F-MON:T-CNT:F-AUT:F-WUN:F-INT:T-DPA:T
+      - "WIDGET_LOCATION=${EXTERNAL_BASE_URL}/widget/"
+      - SERVER_BASE_URL=/api/
+      - DASHBOARD_URL=/dashboard/
+      - WS_URL_RELATIVE=/ws/
+      - UPLOAD_ENGINE=native
+      - LOG_LEVEL=info
+      - CDS_STORAGE_PREFIX=cds_sv5
+      - API_BASEIMAGE_URL=/api/
+      - FILE_UPLOAD_ACCEPT=*/*
+      - "AI_MODELS=gpt-4o:4;gpt-4o-mini:0.3;gpt-4-turbo-preview:12;gpt-3.5-turbo:0.6"
+      - MQTT_APPID=tilechat
+      - "MQTT_ENDPOINT=${EXTERNAL_MQTT_BASE_URL}/mqws/ws"
+    networks:
+      - tiledesk_network
+
+  td-widget:
+    image: "chat21/chat21-web-widget:5.1.2"
+    container_name: td_widget
+    restart: unless-stopped
+    environment:
+      - CHAT21_ENGINE=mqtt
+      - MQTT_APPID=tilechat
+      - PUSH_ENGINE=none
+      - LOG_LEVEL=info
+      - "MQTT_ENDPOINT=${EXTERNAL_MQTT_BASE_URL}/mqws/ws"
+      - "MQTT_APIENDPOINT=${EXTERNAL_BASE_URL}/chatapi/api"
+      - FIREBASE_TENANT=tilechat
+      - UPLOAD_ENGINE=native
+      - "SERVER_BASE_URL=${EXTERNAL_BASE_URL}/api/"
+      - "TRANSLATIONS_URL=${EXTERNAL_BASE_URL}/api/"
+      - "API_BASEIMAGE_URL=${EXTERNAL_BASE_URL}/api/"
+      - DASHBOARD_URL=/dashboard/
+      - AUTH_PERSISTENCE=LOCAL
+      - ENBED_JS=true
+      - FILE_UPLOAD_ACCEPT=*/*
+    networks:
+      - tiledesk_network
+
+  td-ionic:
+    image: "chat21/chat21-ionic:3.4.22"
+    container_name: td_ionic
+    restart: unless-stopped
+    environment:
+      - DASHBOARD_URL=/dashboard/
+      - API_BASEIMAGE_URL=/api/
+      - SERVER_BASE_URL=/api/
+      - >-
+        FEATURES_TOKEN=PAY:F-ANA:T-ACT:T-TRI:T-GRO:T-DEP:T-OPH:T-MTL:T-CAR:T-PSA:F-MTT:T-SUP:T-LBS:T-APP:T-DEV:F-NOT:T-IPS:F-ETK:F-RAS:F-PPB:F-PET:F-MTS:F-TIL:T-DGF:T-NAT:T-HPB:F-TOW:F-KNB:T-GPT:T-BAN:F-AST:F-MON:T-CNT:F-AUT:F-WUN:F-INT:T-DPA:T
+      - WIDGET_LOCATION=/widget/
+      - PUSH_ENGINE=none
+      - LOG_LEVEL=info
+      - FILE_UPLOAD_ACCEPT=*/*
+      - CHAT21_ENGINE=mqtt
+      - MQTT_APPID=tilechat
+      - "MQTT_ENDPOINT=${EXTERNAL_MQTT_BASE_URL}/mqws/ws"
+      - MQTT_APIENDPOINT=/chatapi/api
+      - UPLOAD_ENGINE=native
+      - FIREBASE_TENANT=tilechat
+      - SUPPORT_MODE=true
+      - WRITE_TO_BUTTON=true
+      - ARCHIVED_BUTTON=true
+      - AUTH_PERSISTENCE=LOCAL
+      - EMAIL_SECTION=true
+      - CHAT_STORAGE_PREFIX=chat_sv5
+      - WS_URL_RELATIVE=/ws/
+    networks:
+      - tiledesk_network
+
+  # ===== REVERSE PROXY (custom nginx) =====
+  td-proxy:
+    image: "nginx:alpine"
+    container_name: td_proxy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:80"
+    volumes:
+      - /opt/tiledesk/nginx-conf/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      td-server:
+        condition: service_healthy
+      td-dashboard:
+        condition: service_started
+      td-widget:
+        condition: service_started
+      td-chat21http:
+        condition: service_started
+      td-rabbitmq:
+        condition: service_started
+      td-cds:
+        condition: service_started
+    networks:
+      - tiledesk_network

@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>دليل نظام QAYDAO المتكامل لخدمة العملاء</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--brand:#0f766e;--brand-light:#14b8a6;--brand-dark:#0d4f4a;--brand-bg:#f0fdfa;--accent:#f59e0b;--danger:#dc2626;--surface:#fff;--bg:#f8fafc;--text:#1e293b;--text-light:#64748b;--border:#e2e8f0;--radius:16px;--shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);--shadow-lg:0 8px 32px rgba(0,0,0,.08)}*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);line-height:1.8}::selection{background:var(--brand-light);color:#fff}
+
+.hero{background:linear-gradient(135deg,#0d4f4a 0%,#0f766e 40%,#14b8a6 100%);color:#fff;padding:60px 24px 80px;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 20% 80%,rgba(255,255,255,.08),transparent 50%),radial-gradient(circle at 80% 20%,rgba(255,255,255,.05),transparent 50%)}
+.hero h1{font-size:clamp(26px,5vw,44px);font-weight:900;position:relative;margin-bottom:12px}
+.hero p{font-size:clamp(15px,2.5vw,19px);opacity:.9;position:relative;max-width:650px;margin:0 auto}
+.hero .badge{display:inline-block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);padding:6px 20px;border-radius:999px;font-size:13px;margin-bottom:20px;position:relative;backdrop-filter:blur(4px)}
+
+.nav-wrap{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.nav{max-width:1200px;margin:0 auto;padding:0 20px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav a{padding:12px 14px;white-space:nowrap;text-decoration:none;color:var(--text-light);font-weight:600;font-size:13px;border-bottom:3px solid transparent;transition:.2s;flex-shrink:0}
+.nav a:hover,.nav a.active{color:var(--brand);border-bottom-color:var(--brand)}
+
+.container{max-width:960px;margin:0 auto;padding:40px 24px 80px}
+.section{margin-bottom:48px;scroll-margin-top:70px}
+.section-header{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+.section-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.section-header h2{font-size:clamp(20px,3.5vw,28px);font-weight:800}
+
+.card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:24px;margin-bottom:16px;box-shadow:var(--shadow);transition:.2s}
+.card:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px)}
+.card h3{font-size:17px;font-weight:700;margin-bottom:10px;color:var(--brand-dark);display:flex;align-items:center;gap:8px}
+.card h4{font-size:15px;font-weight:700;margin:14px 0 6px;color:var(--text)}
+.card p,.card li{font-size:14px;color:var(--text-light);line-height:1.9}
+.card ul{padding-right:18px}.card li{margin-bottom:4px}
+
+.step{display:flex;gap:16px;margin-bottom:18px}
+.step-num{width:36px;height:36px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0;margin-top:2px}
+.step-content{flex:1}.step-content h4{font-size:15px;font-weight:700;margin-bottom:2px}.step-content p{font-size:13px;color:var(--text-light)}
+
+.table-wrap{overflow-x:auto;margin:12px 0;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--brand-bg);color:var(--brand-dark);font-weight:700;padding:12px 14px;text-align:right}
+td{padding:10px 14px;border-top:1px solid var(--border)}
+tr:hover td{background:#f8fafc}
+
+.tag{display:inline-block;padding:3px 12px;border-radius:999px;font-size:11px;font-weight:700;margin:2px}
+.tag-red{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.tag-orange{background:#fff7ed;color:#ea580c;border:1px solid #fed7aa}
+.tag-green{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+.tag-blue{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe}
+.tag-purple{background:#faf5ff;color:#9333ea;border:1px solid #e9d5ff}
+.tag-yellow{background:#fefce8;color:#ca8a04;border:1px solid #fef08a}
+.tag-cyan{background:#ecfeff;color:#0891b2;border:1px solid #a5f3fc}
+.tag-gray{background:#f8fafc;color:#64748b;border:1px solid #e2e8f0}
+
+.alert{padding:16px 20px;border-radius:10px;margin:12px 0;font-size:13px;display:flex;gap:10px;align-items:flex-start}
+.alert-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+.alert-warn{background:#fff7ed;border:1px solid #fed7aa;color:#c2410c}
+.alert-success{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+.alert-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+
+.cred-box{background:linear-gradient(135deg,#1e293b,#334155);color:#fff;border-radius:var(--radius);padding:24px;margin:16px 0}
+.cred-box h3{color:#5eead4;margin-bottom:14px;font-size:16px}
+.cred-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:13px;flex-wrap:wrap;gap:6px}
+.cred-row:last-child{border:none}
+.cred-label{color:#94a3b8}.cred-value{font-family:monospace;color:#5eead4;font-weight:600;direction:ltr}
+
+.sys-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:8px;font-size:12px;font-weight:700}
+.sys-chatwoot{background:#1f2937;color:#6ee7b7}.sys-tiledesk{background:#1e1b4b;color:#a5b4fc}
+
+.flow-box{background:linear-gradient(135deg,#f0fdfa,#ecfeff);border:2px solid var(--brand-light);border-radius:var(--radius);padding:24px;margin:16px 0;text-align:center}
+.flow-box h4{color:var(--brand-dark);font-size:16px;margin-bottom:16px}
+.flow-step{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:white;border-radius:8px;border:1px solid var(--border);font-size:13px;font-weight:600;margin:4px}
+.flow-arrow{font-size:20px;color:var(--brand);margin:0 4px}
+
+.toc{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:20px 0}
+.toc a{display:block;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;text-decoration:none;color:var(--text);font-weight:600;font-size:13px;transition:.2s}
+.toc a:hover{border-color:var(--brand);background:var(--brand-bg);color:var(--brand)}
+.toc a span{display:block;font-size:20px;margin-bottom:4px}
+
+.footer{text-align:center;padding:40px 24px;color:var(--text-light);font-size:12px;border-top:1px solid var(--border);margin-top:60px}
+@media(max-width:600px){.cred-row{flex-direction:column;align-items:flex-start}.flow-step{display:block;margin:6px auto}}
+@media print{.nav-wrap,.hero .badge{display:none}.hero{padding:30px}.card{break-inside:avoid;box-shadow:none}}
+</style>
+</head>
+<body>
+
+<div class="hero">
+<div class="badge">📘 الإصدار 2.0 — مارس 2026 | النظام المتكامل</div>
+<h1>الدليل الشامل لنظام QAYDAO لخدمة العملاء</h1>
+<p>كل ما تحتاج معرفته عن نظام المحادثات (Chatwoot) + البوت الذكي (Tiledesk) — من الصفر حتى الاحتراف</p>
+</div>
+
+<div class="nav-wrap"><div class="nav">
+<a href="#overview" class="active">نظرة عامة</a>
+<a href="#how-it-works">كيف يعمل النظام</a>
+<a href="#login">تسجيل الدخول</a>
+<a href="#chatwoot-dashboard">لوحة المحادثات</a>
+<a href="#conversations">إدارة المحادثات</a>
+<a href="#tickets">التذاكر</a>
+<a href="#customers">العملاء</a>
+<a href="#teams">الأقسام</a>
+<a href="#sla">SLA</a>
+<a href="#csat">التقييمات</a>
+<a href="#ai-captain">المساعد الذكي</a>
+<a href="#tiledesk">البوت الذكي</a>
+<a href="#tiledesk-dashboard">لوحة البوت</a>
+<a href="#integration">الربط بينهم</a>
+<a href="#shortcuts">نصائح</a>
+<a href="#accounts">الحسابات</a>
+<a href="#faq">أسئلة شائعة</a>
+</div></div>
+
+<div class="container">
+
+<!-- === نظرة عامة === -->
+<div class="section" id="overview">
+<div class="section-header"><div class="section-icon" style="background:#f0fdfa;color:#0f766e">🏠</div><h2>نظرة عامة على النظام</h2></div>
+
+<div class="card">
+<h3>🎯 ما هو هذا النظام؟</h3>
+<p>نظام QAYDAO لخدمة العملاء يتكون من <strong>نظامين يعملان معاً</strong> لتقديم أفضل تجربة للعملاء وأسهل تجربة للموظفين:</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0">
+<div style="padding:20px;border-radius:12px;background:#f0fdfa;border:2px solid #14b8a6">
+<div class="sys-chatwoot" style="margin-bottom:10px">💬 Chatwoot</div>
+<h4 style="margin:8px 0">نظام المحادثات</h4>
+<p style="font-size:13px;color:var(--text-light)">هذا <strong>مكان عملك اليومي</strong>. هنا تستقبل المحادثات، ترد على العملاء، تدير التذاكر، وتتابع الأداء.</p>
+<p style="font-size:12px;margin-top:8px;color:var(--brand)"><strong>الرابط:</strong> chat.qaydao.com</p>
+</div>
+<div style="padding:20px;border-radius:12px;background:#eef2ff;border:2px solid #818cf8">
+<div class="sys-tiledesk" style="margin-bottom:10px">🤖 Tiledesk</div>
+<h4 style="margin:8px 0">البوت الذكي</h4>
+<p style="font-size:13px;color:var(--text-light)">هذا <strong>يعمل في الخلفية تلقائياً</strong>. يستقبل العملاء، يرد على الأسئلة الشائعة، ويحوّل لك المحادثات المعقدة.</p>
+<p style="font-size:12px;margin-top:8px;color:#6366f1"><strong>الرابط:</strong> ai.qaydao.com (للمدير فقط)</p>
+</div>
+</div>
+
+<div class="alert alert-success"><span class="alert-icon">✅</span><div><strong>المهم:</strong> أنت كموظف تحتاج تفتح <strong>chat.qaydao.com فقط</strong>. البوت الذكي يعمل في الخلفية تلقائياً بدون ما تسوي شيء.</div></div>
+</div>
+
+<div class="card">
+<h3>📋 فهرس الدليل</h3>
+<div class="toc">
+<a href="#how-it-works"><span>🔄</span>كيف يعمل النظام</a>
+<a href="#login"><span>🔐</span>تسجيل الدخول</a>
+<a href="#chatwoot-dashboard"><span>📊</span>لوحة المحادثات</a>
+<a href="#conversations"><span>💬</span>إدارة المحادثات</a>
+<a href="#tickets"><span>🎫</span>نظام التذاكر</a>
+<a href="#customers"><span>👥</span>إدارة العملاء</a>
+<a href="#teams"><span>🏢</span>الأقسام والفرق</a>
+<a href="#sla"><span>⏰</span>اتفاقية الخدمة</a>
+<a href="#csat"><span>⭐</span>تقييم الرضا</a>
+<a href="#ai-captain"><span>🧠</span>المساعد الذكي Captain</a>
+<a href="#tiledesk"><span>🤖</span>البوت الذكي Tiledesk</a>
+<a href="#tiledesk-dashboard"><span>🖥️</span>لوحة تحكم البوت</a>
+<a href="#integration"><span>🔗</span>الربط بين النظامين</a>
+<a href="#shortcuts"><span>⚡</span>نصائح واختصارات</a>
+<a href="#accounts"><span>👤</span>حسابات الموظفين</a>
+<a href="#faq"><span>❓</span>أسئلة شائعة</a>
+</div>
+</div>
+</div>
+
+<!-- === كيف يعمل === -->
+<div class="section" id="how-it-works">
+<div class="section-header"><div class="section-icon" style="background:#ecfeff;color:#0891b2">🔄</div><h2>كيف يعمل النظام — الصورة الكاملة</h2></div>
+
+<div class="card">
+<h3>🔄 رحلة رسالة العميل من البداية للنهاية</h3>
+<p>عندما يرسل عميل رسالة (واتساب، إنستقرام، الموقع، أو أي قناة)، هذا اللي يصير:</p>
+
+<div class="flow-box">
+<h4>مسار الرسالة في النظام</h4>
+<div style="margin:16px 0">
+<span class="flow-step">📱 العميل يرسل رسالة</span>
+<span class="flow-arrow">←</span>
+<span class="flow-step">🤖 البوت يستقبل أولاً</span>
+<span class="flow-arrow">←</span>
+<span class="flow-step">🧠 يحاول يحل تلقائياً</span>
+</div>
+<div style="margin:16px 0">
+<span class="flow-step" style="background:#f0fdf4;border-color:#bbf7d0">✅ لو حل → العميل راضي</span>
+<span style="margin:0 12px;font-weight:700;color:var(--text-light)">أو</span>
+<span class="flow-step" style="background:#fef2f2;border-color:#fecaca">❌ لو ما حل → يحوّل لك</span>
+</div>
+<div style="margin:16px 0">
+<span class="flow-step">💬 المحادثة تظهر في Chatwoot</span>
+<span class="flow-arrow">←</span>
+<span class="flow-step">👨‍💼 الموظف يكمل ويحل</span>
+<span class="flow-arrow">←</span>
+<span class="flow-step">⭐ العميل يقيّم</span>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h3>📊 ماذا يعني هذا لك كموظف؟</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>بدون البوت (قبل)</th><th>مع البوت (الآن)</th></tr></thead>
+<tbody>
+<tr><td>تستقبل 100 محادثة يومياً</td><td>البوت يحل 60-70 منها، أنت تستقبل 30-40 فقط</td></tr>
+<tr><td>تكرر نفس الأسئلة (سعر؟ توصيل؟ متوفر؟)</td><td>البوت يرد عليها تلقائياً</td></tr>
+<tr><td>تسأل العميل: اسمك؟ وش تبي؟ منطقتك؟</td><td>البوت جمع كل المعلومات مسبقاً</td></tr>
+<tr><td>ما تعرف أولوية الطلب</td><td>البوت حدد الأولوية والقسم تلقائياً</td></tr>
+<tr><td>ترد بعد دقائق</td><td>البوت يرد بثواني + أنت تركز على المعقد</td></tr>
+</tbody>
+</table></div>
+</div>
+</div>
+
+<!-- === تسجيل الدخول === -->
+<div class="section" id="login">
+<div class="section-header"><div class="section-icon" style="background:#eff6ff;color:#2563eb">🔐</div><h2>تسجيل الدخول</h2></div>
+
+<div class="card">
+<h3>💬 الدخول لنظام المحادثات (Chatwoot) — استخدامك اليومي</h3>
+<div class="alert alert-info"><span class="alert-icon">💡</span><div>هذا النظام اللي تفتحه كل يوم: <strong style="direction:ltr;display:inline-block">https://chat.qaydao.com</strong></div></div>
+<div class="step"><div class="step-num">1</div><div class="step-content"><h4>افتح الرابط في المتصفح</h4><p>يفضّل استخدام Chrome أو Edge</p></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content"><h4>أدخل البريد الإلكتروني وكلمة المرور</h4><p>البريد: مثل ahmed@qaydao.com | كلمة المرور الابتدائية: <code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;direction:ltr">Qaydao@2026</code></p></div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><h4>ستظهر لك لوحة التحكم</h4><p>ستشوف صندوق الوارد مع المحادثات الجديدة</p></div></div>
+</div>
+
+<div class="card">
+<h3>🤖 الدخول لنظام البوت الذكي (Tiledesk) — للمدير والمشرف فقط</h3>
+<div class="alert alert-warn"><span class="alert-icon">⚠️</span><div>هذا النظام <strong>للمدير والمشرف فقط</strong>. الموظف العادي لا يحتاج يدخله — البوت يعمل تلقائياً.</div></div>
+<div class="step"><div class="step-num">1</div><div class="step-content"><h4>افتح: <span style="direction:ltr;display:inline-block">https://ai.qaydao.com/dashboard/</span></h4><p>لوحة التحكم الخاصة بالبوت الذكي</p></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content"><h4>سجّل دخول ببريدك وكلمة المرور</h4><p>نفس بيانات الدخول المسجلة لك</p></div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><h4>اختر مشروع "QAYDAO"</h4><p>ستظهر لك لوحة التحكم بالبوت والأتمتة</p></div></div>
+</div>
+<div class="alert alert-warn"><span class="alert-icon">⚠️</span><div><strong>مهم جداً:</strong> غيّر كلمة المرور فوراً بعد أول دخول من الإعدادات الشخصية في كلا النظامين.</div></div>
+</div>
+
+<!-- === لوحة Chatwoot === -->
+<div class="section" id="chatwoot-dashboard">
+<div class="section-header"><div class="section-icon" style="background:#f0fdf4;color:#16a34a">📊</div><h2>لوحة المحادثات (Chatwoot) — شاشتك الرئيسية</h2></div>
+
+<div class="card">
+<h3>🖥️ أجزاء الشاشة الرئيسية</h3>
+<p>عند فتح chat.qaydao.com ستشوف 3 أجزاء رئيسية:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>الجزء</th><th>الموقع</th><th>الوظيفة</th></tr></thead>
+<tbody>
+<tr><td><strong>الشريط الجانبي الأيمن</strong></td><td>أقصى اليمين</td><td>القوائم الرئيسية: المحادثات، جهات الاتصال، التقارير، الإعدادات</td></tr>
+<tr><td><strong>قائمة المحادثات</strong></td><td>الوسط</td><td>كل المحادثات النشطة — اضغط على أي واحدة لفتحها</td></tr>
+<tr><td><strong>نافذة المحادثة</strong></td><td>اليسار</td><td>تفاصيل المحادثة المختارة + حقل الرد + بيانات العميل</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>📥 صناديق الوارد (Inboxes) — القنوات</h3>
+<p>كل قناة تواصل لها صندوق وارد خاص. تقدر تفلتر حسب القناة:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>القناة</th><th>الأيقونة</th><th>الوصف</th><th>الحالة</th></tr></thead>
+<tbody>
+<tr><td><strong>الموقع الإلكتروني</strong></td><td>💬</td><td>شات مباشر من موقع qaydao.com</td><td><span class="tag tag-green">مفعّل</span></td></tr>
+<tr><td><strong>البريد الإلكتروني</strong></td><td>📧</td><td>رسائل الإيميل من العملاء</td><td><span class="tag tag-green">مفعّل</span></td></tr>
+<tr><td><strong>واتساب</strong></td><td>📱</td><td>رسائل WhatsApp Business</td><td><span class="tag tag-orange">قيد الربط</span></td></tr>
+<tr><td><strong>إنستقرام</strong></td><td>📸</td><td>رسائل Instagram Direct</td><td><span class="tag tag-orange">قيد الربط</span></td></tr>
+<tr><td><strong>تيك توك</strong></td><td>🎵</td><td>رسائل TikTok</td><td><span class="tag tag-orange">قيد الربط</span></td></tr>
+</tbody>
+</table></div>
+<div class="alert alert-info"><span class="alert-icon">💡</span><div>كل المحادثات من كل القنوات تظهر في <strong>مكان واحد</strong>. لا تحتاج تفتح واتساب وإنستقرام منفصلين — كلهم هنا.</div></div>
+</div>
+</div>
+
+<!-- === المحادثات === -->
+<div class="section" id="conversations">
+<div class="section-header"><div class="section-icon" style="background:#faf5ff;color:#9333ea">💬</div><h2>إدارة المحادثات — خطوة بخطوة</h2></div>
+
+<div class="card">
+<h3>📋 حالات المحادثة</h3>
+<p>كل محادثة لها حالة تعكس وضعها الحالي:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>الحالة</th><th>الأيقونة</th><th>المعنى</th><th>متى تستخدمها</th></tr></thead>
+<tbody>
+<tr><td><span class="tag tag-blue">مفتوحة</span></td><td>🔵</td><td>المحادثة نشطة وتنتظر ردك</td><td>عند وصول رسالة جديدة من العميل</td></tr>
+<tr><td><span class="tag tag-yellow">معلّقة</span></td><td>🟡</td><td>أنت رديت وتنتظر رد العميل</td><td>بعد ما ترسل ردك وتنتظر العميل يرجع</td></tr>
+<tr><td><span class="tag tag-purple">مؤجّلة</span></td><td>🟣</td><td>مؤجلة لوقت محدد</td><td>لما تحتاج ترجع للعميل بعد ساعات أو أيام</td></tr>
+<tr><td><span class="tag tag-green">محلولة</span></td><td>🟢</td><td>تم حل المشكلة بنجاح</td><td>بعد ما العميل يؤكد إن مشكلته اتحلت</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>✍️ كيف ترد على محادثة — الخطوات الكاملة</h3>
+<div class="step"><div class="step-num">1</div><div class="step-content"><h4>اختر المحادثة من القائمة</h4><p>المحادثات الأحدث تظهر أولاً. المحادثات اللي فيها تنبيه SLA تظهر بلون أحمر — أعطها أولوية.</p></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content"><h4>اقرأ سياق المحادثة بالكامل</h4><p>اطّلع على كل الرسائل السابقة. <strong>مهم جداً:</strong> لو المحادثة محوّلة من البوت، ستجد ملخص ذكي في الأعلى يوضح كل اللي صار — لا تسأل العميل نفس الأسئلة مرة ثانية!</p></div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><h4>شوف بيانات العميل في الشريط الجانبي</h4><p>على اليسار تشوف: اسم العميل، نوعه (VIP/شركة/عادي)، المنطقة، السجل السابق. هذي المعلومات تساعدك ترد بشكل أفضل.</p></div></div>
+<div class="step"><div class="step-num">4</div><div class="step-content"><h4>اكتب ردك في حقل الرد</h4><p>حقل الرد في أسفل الشاشة. تقدر: تكتب نص، ترفق صور أو ملفات، تستخدم الردود الجاهزة (اكتب / )، أو تطلب مساعدة من Captain AI (اضغط ✨).</p></div></div>
+<div class="step"><div class="step-num">5</div><div class="step-content"><h4>أضف التصنيفات والأولوية</h4><p>من الشريط الجانبي: أضف <strong>نوع الطلب</strong> (شحن/إرجاع/استفسار...)، <strong>الأولوية</strong> (عاجل/متوسط/عادي)، و<strong>تصنيف العميل</strong> (VIP/شركة/عادي).</p></div></div>
+<div class="step"><div class="step-num">6</div><div class="step-content"><h4>أرسل الرد بـ Ctrl+Enter</h4><p>أو اضغط زر الإرسال. لو ما تقدر تحل → حوّل المحادثة لزميلك أو لقسم آخر.</p></div></div>
+</div>
+
+<div class="card">
+<h3>🔄 تحويل المحادثة لموظف أو قسم آخر</h3>
+<p>أحياناً المحادثة تحتاج موظف متخصص أو قسم ثاني. الطريقة:</p>
+<ul>
+<li><strong>تحويل لموظف محدد:</strong> من الشريط الجانبي ← "تعيين الوكيل" ← اختر اسم الموظف</li>
+<li><strong>تحويل لقسم:</strong> من "تعيين الفريق" ← اختر القسم (المبيعات / الدعم / B2B / الشحن)</li>
+</ul>
+<div class="alert alert-info"><span class="alert-icon">💡</span><div><strong>نصيحة:</strong> لما تحوّل محادثة، أضف <strong>ملاحظة داخلية</strong> توضح السبب والسياق لزميلك عشان ما يسأل العميل من البداية.</div></div>
+</div>
+
+<div class="card">
+<h3>📝 الملاحظات الداخلية (Private Notes)</h3>
+<p>ملاحظات تكتبها لفريقك <strong>لا يراها العميل أبداً</strong>. استخدامات:</p>
+<ul>
+<li>توثيق سبب تحويل محادثة</li>
+<li>تنبيه زميل على شيء مهم (اكتب <strong>@اسم_الزميل</strong>)</li>
+<li>كتابة ملاحظة للمتابعة لاحقاً</li>
+<li>توثيق اتفاق مع العميل</li>
+</ul>
+<p><strong>الطريقة:</strong> اضغط على زر <strong>"ملاحظة"</strong> بجانب حقل الرد (أو Alt+N)، اكتب ملاحظتك، واضغط إرسال.</p>
+</div>
+</div>
+
+<!-- === التذاكر === -->
+<div class="section" id="tickets">
+<div class="section-header"><div class="section-icon" style="background:#fef2f2;color:#dc2626">🎫</div><h2>نظام التذاكر والأولويات</h2></div>
+
+<div class="card">
+<h3>📂 فئات التذاكر — 8 أنواع</h3>
+<p>كل محادثة يجب تصنيفها حسب نوع الطلب. من الشريط الجانبي ← "التسميات" ← اختر:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>التصنيف</th><th>اللون</th><th>متى تستخدمه</th><th>أمثلة</th></tr></thead>
+<tbody>
+<tr><td><span class="tag tag-blue">الشحن</span></td><td>🔵</td><td>أي شيء يخص الشحن والتوصيل</td><td>وين طلبي؟ تأخر التوصيل، تغيير عنوان</td></tr>
+<tr><td><span class="tag tag-red">الإرجاع</span></td><td>🔴</td><td>طلبات الإرجاع والاستبدال</td><td>أبي أرجع المنتج، وصلني غلط</td></tr>
+<tr><td><span class="tag tag-purple">استفسار</span></td><td>🟣</td><td>أسئلة عامة</td><td>وش الألوان المتوفرة؟ كم السعر؟</td></tr>
+<tr><td><span class="tag tag-red">شكوى</span></td><td>🔴</td><td>شكاوى ومشاكل</td><td>المنتج معيب، خدمة سيئة</td></tr>
+<tr><td><span class="tag tag-green">طلب_جديد</span></td><td>🟢</td><td>عميل يبي يطلب</td><td>أبي أشتري كنب، عندكم طاولات؟</td></tr>
+<tr><td><span class="tag tag-orange">صيانة</span></td><td>🟠</td><td>خدمة ما بعد البيع</td><td>الكرسي انكسر، أحتاج قطعة غيار</td></tr>
+<tr><td><span class="tag tag-purple">تأثيث_مشروع</span></td><td>🟣</td><td>تأثيث مشروع كامل</td><td>أبي أأثث مكتب 50 موظف</td></tr>
+<tr><td><span class="tag tag-cyan">جملة_B2B</span></td><td>🔵</td><td>طلبات الجملة والشركات</td><td>نبي 200 كرسي لمدرسة</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>🚨 الأولويات — 3 مستويات</h3>
+<p>حدد أولوية كل محادثة من الشريط الجانبي ← "التسميات":</p>
+<div class="table-wrap"><table>
+<thead><tr><th>الأولوية</th><th>متى تستخدمها</th><th>الاستجابة المطلوبة</th><th>أمثلة</th></tr></thead>
+<tbody>
+<tr style="background:#fef2f2"><td><span class="tag tag-red">🔴 عاجل</span></td><td>مشكلة حرجة تؤثر على العميل الآن</td><td><strong>رد خلال 5 دقائق</strong></td><td>شحنة تالفة، عميل VIP غاضب، طلب ملغي بالخطأ</td></tr>
+<tr><td><span class="tag tag-orange">🟠 متوسط</span></td><td>يحتاج متابعة خلال ساعات</td><td><strong>رد خلال 30 دقيقة</strong></td><td>استفسار عن موعد توصيل، تعديل طلب قائم</td></tr>
+<tr><td><span class="tag tag-green">🟢 عادي</span></td><td>طلب عام لا يحتاج استعجال</td><td><strong>رد خلال ساعة</strong></td><td>استفسار عام، طلب كتالوج، سؤال عن منتج</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>📋 الحقول المخصصة لكل محادثة</h3>
+<p>كل محادثة فيها حقول إضافية في الشريط الجانبي يجب ملؤها:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>الحقل</th><th>النوع</th><th>الوصف</th><th>مطلوب؟</th></tr></thead>
+<tbody>
+<tr><td><strong>الأولوية</strong></td><td>قائمة</td><td>عاجل / متوسط / عادي</td><td>✅ نعم</td></tr>
+<tr><td><strong>نوع الطلب</strong></td><td>قائمة</td><td>شحن / إرجاع / استفسار / شكوى / طلب جديد / صيانة / تأثيث / B2B</td><td>✅ نعم</td></tr>
+<tr><td><strong>رقم الطلب</strong></td><td>نص</td><td>رقم الطلب من نظام المبيعات (إن وجد)</td><td>❌ اختياري</td></tr>
+<tr><td><strong>القيمة المتوقعة</strong></td><td>رقم</td><td>القيمة المالية المتوقعة بالريال</td><td>❌ اختياري</td></tr>
+</tbody>
+</table></div>
+</div>
+</div>
+
+<!-- === العملاء === -->
+<div class="section" id="customers">
+<div class="section-header"><div class="section-icon" style="background:#ecfeff;color:#0891b2">👥</div><h2>إدارة العملاء وتصنيفهم</h2></div>
+
+<div class="card">
+<h3>📇 بيانات العميل — أين تجدها؟</h3>
+<p>عند فتح أي محادثة، تظهر بيانات العميل في <strong>الشريط الجانبي الأيسر</strong>. هذه البيانات:</p>
+<ul>
+<li><strong>المعلومات الأساسية:</strong> الاسم، البريد، الهاتف</li>
+<li><strong>نوع العميل:</strong> VIP / عادي / شركة / مورد / مشروع تأثيث</li>
+<li><strong>المنطقة:</strong> جدة / الرياض / الدمام / مكة / المدينة / أخرى</li>
+<li><strong>مصدر العميل:</strong> من أين جاء (واتساب / إنستقرام / الموقع / تيك توك / إحالة / B2B)</li>
+<li><strong>سجل المحادثات:</strong> كل المحادثات السابقة مع هذا العميل — اضغط عليها لمراجعتها</li>
+</ul>
+<div class="alert alert-success"><span class="alert-icon">✅</span><div><strong>قاعدة ذهبية:</strong> دائماً تحقق من سجل العميل السابق قبل الرد. هذا يعطيك سياق كامل ويمنعك تكرر أسئلة سبق طرحها.</div></div>
+</div>
+
+<div class="card">
+<h3>⭐ تصنيفات العملاء — 5 فئات</h3>
+<p>كل عميل جديد يجب تصنيفه. من ملف العميل ← "التسميات" ← اختر التصنيف:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>التصنيف</th><th>من هو</th><th>كيف تتعامل معه</th><th>أمثلة</th></tr></thead>
+<tbody>
+<tr><td><span class="tag tag-yellow">⭐ VIP</span></td><td>عميل متكرر أو مشتريات كبيرة</td><td>أولوية قصوى، رد خلال 5 دقائق، متابعة شخصية، تواصل استباقي</td><td>عميل يشتري شهرياً، مشتريات أكثر من 10,000 ريال</td></tr>
+<tr><td><span class="tag tag-blue">🏢 شركات</span></td><td>شركة أو مؤسسة</td><td>عروض خاصة، تحويل لفريق B2B، فاتورة ضريبية، شروط دفع مرنة</td><td>شركة مقاولات، فندق، مدرسة</td></tr>
+<tr><td><span class="tag tag-cyan">🤝 مورد</span></td><td>مورد أو شريك تجاري</td><td>تحويل لقسم المشتريات مباشرة</td><td>مصنع صيني، وكيل محلي</td></tr>
+<tr><td><span class="tag tag-gray">👤 عميل_عادي</span></td><td>عميل فردي عادي</td><td>خدمة قياسية حسب SLA العادي</td><td>شخص يبي كنب لبيته</td></tr>
+<tr><td><span class="tag tag-purple">🏗️ عميل_مشاريع</span></td><td>يريد تأثيث مشروع كامل</td><td>تحويل لفريق B2B فوراً، إعداد عرض سعر مخصص</td><td>مقاول يبي يأثث عمارة 20 شقة</td></tr>
+</tbody>
+</table></div>
+</div>
+</div>
+
+<!-- === الأقسام === -->
+<div class="section" id="teams">
+<div class="section-header"><div class="section-icon" style="background:#fff7ed;color:#ea580c">🏢</div><h2>الأقسام والفرق</h2></div>
+<div class="card">
+<h3>👨‍💼 4 أقسام رئيسية</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>القسم</th><th>المسؤولية</th><th>أنواع الطلبات</th><th>الموظفين</th></tr></thead>
+<tbody>
+<tr><td><strong>🛒 المبيعات</strong></td><td>الطلبات الجديدة والاستفسارات عن المنتجات</td><td>طلب_جديد، استفسار</td><td>أحمد</td></tr>
+<tr><td><strong>🔧 الدعم الفني</strong></td><td>المشاكل والشكاوى وخدمة ما بعد البيع</td><td>شكوى، صيانة، الإرجاع</td><td>سارة</td></tr>
+<tr><td><strong>🏢 B2B</strong></td><td>طلبات الشركات والمشاريع والجملة</td><td>جملة_B2B، تأثيث_مشروع</td><td>محمد</td></tr>
+<tr><td><strong>🚚 الشحن</strong></td><td>متابعة الشحنات والتوصيل</td><td>الشحن</td><td>فاطمة</td></tr>
+</tbody>
+</table></div>
+<div class="alert alert-info"><span class="alert-icon">💡</span><div>لو استلمت محادثة مش تخصصك، حوّلها <strong>فوراً</strong> للقسم المناسب مع ملاحظة داخلية. لا تخلي العميل ينتظر.</div></div>
+</div>
+</div>
+
+<!-- === SLA === -->
+<div class="section" id="sla">
+<div class="section-header"><div class="section-icon" style="background:#fef2f2;color:#dc2626">⏰</div><h2>اتفاقية مستوى الخدمة (SLA)</h2></div>
+<div class="card">
+<h3>📊 المعايير الزمنية — يجب الالتزام بها</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>المستوى</th><th>أول رد</th><th>الرد التالي</th><th>الحل النهائي</th><th>ملاحظة</th></tr></thead>
+<tbody>
+<tr style="background:#fef2f2"><td><span class="tag tag-red">🔴 عاجل VIP</span></td><td><strong>5 دقائق</strong></td><td><strong>10 دقائق</strong></td><td><strong>ساعة واحدة</strong></td><td>يشمل عطل نهاية الأسبوع</td></tr>
+<tr><td><span class="tag tag-orange">🟠 متوسط</span></td><td><strong>30 دقيقة</strong></td><td><strong>ساعة</strong></td><td><strong>8 ساعات</strong></td><td>أوقات العمل فقط</td></tr>
+<tr><td><span class="tag tag-green">🟢 عادي</span></td><td><strong>ساعة</strong></td><td><strong>ساعتين</strong></td><td><strong>24 ساعة</strong></td><td>أوقات العمل فقط</td></tr>
+</tbody>
+</table></div>
+<div class="alert alert-warn"><span class="alert-icon">⚠️</span><div><strong>تنبيه:</strong> تجاوز معايير SLA يظهر كتنبيه أحمر في لوحتك ويسجّل في تقارير الأداء الشهرية. حافظ على الالتزام!</div></div>
+</div>
+</div>
+
+<!-- === CSAT === -->
+<div class="section" id="csat">
+<div class="section-header"><div class="section-icon" style="background:#f0fdf4;color:#16a34a">⭐</div><h2>تقييم رضا العملاء (CSAT)</h2></div>
+<div class="card">
+<h3>📊 كيف يعمل؟</h3>
+<ul>
+<li><strong>تلقائياً</strong> — عند إغلاق أي محادثة (تحويلها لـ "محلولة")، يُرسل استبيان تقييم للعميل</li>
+<li><strong>التقييم:</strong> العميل يختار من ⭐ (سيئ) إلى ⭐⭐⭐⭐⭐ (ممتاز) ويمكنه إضافة تعليق</li>
+<li><strong>التقارير:</strong> كل التقييمات تظهر في لوحة التقارير — الخاصة بك وبالفريق</li>
+</ul>
+<div class="alert alert-success"><span class="alert-icon">✅</span><div><strong>الهدف:</strong> الحفاظ على تقييم <strong>4.5 من 5</strong> أو أعلى. كل تقييم أقل من 3 يُراجع من المشرف. قدّم أفضل خدمة دائماً!</div></div>
+<div class="alert alert-info"><span class="alert-icon">🧪</span><div><strong>تجربة عملية:</strong> افتح <a href="https://chat.qaydao.com/guide/test.html" style="color:#1e40af;font-weight:700" target="_blank">صفحة تجربة العميل</a> وأرسل رسائل تجريبية كعميل، ثم شوفها في Chatwoot وتعامل معها.</div></div>
+</div>
+</div>
+
+<!-- === AI Captain === -->
+<div class="section" id="ai-captain">
+<div class="section-header"><div class="section-icon" style="background:#eff6ff;color:#2563eb">🧠</div><h2>المساعد الذكي Captain AI — مساعدك الشخصي</h2></div>
+
+<div class="card">
+<h3>🤖 ما هو Captain AI؟</h3>
+<p>Captain هو مساعد ذكي مدمج <strong>داخل Chatwoot</strong> يساعدك أثناء عملك. هو <strong>لا يرد على العميل مباشرة</strong> — بل يساعدك أنت تكتب ردود أفضل وأسرع.</p>
+</div>
+
+<div class="card">
+<h3>✨ 4 طرق تستخدم Captain AI</h3>
+<div class="step"><div class="step-num">1</div><div class="step-content"><h4>✨ اقتراح رد ذكي</h4><p>اضغط أيقونة ✨ في حقل الرد ← يقترح لك رد مناسب بناءً على سياق المحادثة ← تقدر تعدله قبل الإرسال أو ترسله كما هو.</p></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content"><h4>📝 تحسين النص</h4><p>اكتب ردك ← حدد النص ← اختر "تحسين" ← يصحح الأخطاء الإملائية ويحسّن الصياغة تلقائياً.</p></div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><h4>🎯 تغيير النبرة</h4><p>لو تبي ردك يكون أكثر رسمية أو ودية ← حدد النص ← اختر النبرة المناسبة (رسمي / ودود / مختصر).</p></div></div>
+<div class="step"><div class="step-num">4</div><div class="step-content"><h4>🌍 الترجمة الفورية</h4><p>لو العميل يكتب بالإنجليزي أو الصيني ← حدد النص ← اختر "ترجمة" ← يترجم لك فوراً.</p></div></div>
+</div>
+</div>
+
+<!-- === Tiledesk === -->
+<div class="section" id="tiledesk">
+<div class="section-header"><div class="section-icon" style="background:#eef2ff;color:#6366f1">🤖</div><h2>البوت الذكي (Tiledesk) — يعمل في الخلفية</h2></div>
+
+<div class="card">
+<h3>🤖 ما هو Tiledesk؟</h3>
+<p>Tiledesk هو نظام بوت ذكي يعمل <strong>تلقائياً في الخلفية</strong>. هو أول من يستقبل العميل قبل ما تشوف المحادثة أنت.</p>
+<div class="alert alert-success"><span class="alert-icon">✅</span><div><strong>كموظف:</strong> لا تحتاج تسوي شيء مع Tiledesk. هو يعمل لوحده. بس اعرف كيف يشتغل عشان تفهم المحادثات اللي يحوّلها لك.</div></div>
+</div>
+
+<div class="card">
+<h3>🧠 ماذا يفعل البوت بالضبط؟</h3>
+<div class="step"><div class="step-num">1</div><div class="step-content"><h4>يستقبل العميل ويرحّب فيه</h4><p>"أهلاً بك في QAYDAO! كيف أقدر أساعدك؟"</p></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content"><h4>يسأله عن طلبه ويجمع المعلومات</h4><p>يسأل: وش تبي؟ منطقتك؟ ميزانيتك؟ — كل هذا يوفر عليك وقت</p></div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><h4>يحاول يحل من كتالوج المنتجات</h4><p>لو العميل يسأل عن سعر أو توفر أو مواصفات — البوت عنده قاعدة معرفة بكل المنتجات ويرد مباشرة</p></div></div>
+<div class="step"><div class="step-num">4</div><div class="step-content"><h4>لو ما قدر يحل — يحوّل لك</h4><p>يحوّل المحادثة لك في Chatwoot مع: <strong>ملخص كامل</strong> لكل اللي صار + <strong>تصنيف تلقائي</strong> (نوع الطلب + الأولوية + القسم)</p></div></div>
+</div>
+
+<div class="card">
+<h3>📨 كيف تبدو المحادثة المحوّلة من البوت؟</h3>
+<p>عندما تفتح محادثة محوّلة من البوت، ستجد:</p>
+<ul>
+<li><strong>📋 ملخص ذكي في الأعلى:</strong> "العميل أحمد من جدة يبي كنب مودرن لغرفة المعيشة، ميزانية 5000 ريال، يفضل اللون البيج، سأله عن 3 خيارات لكن يبي لون مختلف"</li>
+<li><strong>🏷️ تصنيفات جاهزة:</strong> نوع الطلب (طلب_جديد)، الأولوية (متوسط)، القسم (المبيعات)</li>
+<li><strong>💬 سجل المحادثة:</strong> كل الرسائل بين البوت والعميل — تقدر تقرأها كاملة</li>
+</ul>
+<div class="alert alert-warn"><span class="alert-icon">⚠️</span><div><strong>مهم جداً:</strong> لا تسأل العميل أسئلة سبق البوت سألها! اقرأ الملخص وكمّل من حيث وقف البوت.</div></div>
+</div>
+
+<div class="card">
+<h3>🔘 التحكم بالبوت (للمشرف فقط)</h3>
+<p>المشرف والمدير يقدرون من <strong>ai.qaydao.com/dashboard</strong>:</p>
+<ul>
+<li>تشغيل / إيقاف البوت بضغطة زر</li>
+<li>تعديل ردود البوت ومحتوى المحادثات</li>
+<li>إضافة منتجات جديدة لقاعدة المعرفة</li>
+<li>مراجعة تقارير أداء البوت (كم حل؟ كم حوّل؟)</li>
+<li>ضبط ساعات عمل البوت</li>
+</ul>
+</div>
+</div>
+
+<!-- === Tiledesk Dashboard تفصيلي === -->
+<div class="section" id="tiledesk-dashboard">
+<div class="section-header"><div class="section-icon" style="background:#eef2ff;color:#4f46e5">🖥️</div><h2>لوحة تحكم البوت الذكي (ai.qaydao.com) — شرح تفصيلي</h2></div>
+
+<div class="alert alert-warn"><span class="alert-icon">⚠️</span><div>هذا القسم <strong>للمدير والمشرف فقط</strong>. الموظف العادي لا يحتاج يقرأه — لكن معرفته مفيدة لفهم كيف يعمل البوت.</div></div>
+
+<div class="card">
+<h3>🖥️ شاشات لوحة التحكم الرئيسية</h3>
+<p>عند فتح <strong style="direction:ltr;display:inline-block">https://ai.qaydao.com/dashboard/</strong> ستجد القوائم التالية:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>القائمة</th><th>الأيقونة</th><th>الوظيفة</th><th>من يستخدمها</th></tr></thead>
+<tbody>
+<tr><td><strong>الرئيسية (Home)</strong></td><td>🏠</td><td>نظرة عامة على إحصائيات اليوم: عدد المحادثات، المحلولة تلقائياً، المحوّلة للموظفين</td><td>المدير + المشرف</td></tr>
+<tr><td><strong>المحادثات (Requests)</strong></td><td>💬</td><td>كل المحادثات الجارية والسابقة بين البوت والعملاء — تقدر تراقبها أو تتدخل</td><td>المدير + المشرف</td></tr>
+<tr><td><strong>جهات الاتصال (Contacts)</strong></td><td>👥</td><td>قائمة بكل العملاء اللي تواصلوا مع البوت مع بياناتهم</td><td>المدير + المشرف</td></tr>
+<tr><td><strong>الأتمتة (Chatbot)</strong></td><td>🤖</td><td>إعداد وتعديل البوتات — بناء Flows بالسحب والإفلات (Visual Designer)</td><td>المدير فقط</td></tr>
+<tr><td><strong>قاعدة المعرفة (Knowledge Base)</strong></td><td>📚</td><td>إضافة/تعديل المحتوى اللي يتعلم منه البوت (منتجات، أسئلة شائعة، سياسات)</td><td>المدير + المشرف</td></tr>
+<tr><td><strong>الأقسام (Departments)</strong></td><td>🏢</td><td>إدارة الأقسام وتوجيه المحادثات التلقائي</td><td>المدير</td></tr>
+<tr><td><strong>الفريق (Teammates)</strong></td><td>👨‍💼</td><td>إدارة المستخدمين وصلاحياتهم</td><td>المدير</td></tr>
+<tr><td><strong>القنوات (Channels)</strong></td><td>📡</td><td>ربط واتساب، فيسبوك، تيليقرام، والويدجت</td><td>المدير</td></tr>
+<tr><td><strong>التقارير (Analytics)</strong></td><td>📊</td><td>تقارير أداء البوت: كم محادثة حلّ، كم حوّل، أوقات الاستجابة</td><td>المدير + المشرف</td></tr>
+<tr><td><strong>الإعدادات (Settings)</strong></td><td>⚙️</td><td>إعدادات المشروع، OpenAI Key، اللغة، ساعات العمل</td><td>المدير فقط</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>🤖 شاشة الأتمتة — بناء البوت بدون كود (Visual Designer)</h3>
+<p>هذي أهم شاشة في Tiledesk — هنا تبني وتعدّل سلوك البوت بالسحب والإفلات:</p>
+<div class="step"><div class="step-num">1</div><div class="step-content"><h4>افتح: الأتمتة (Chatbot) ← اختر البوت</h4><p>ستشوف قائمة بالبوتات المتاحة. اضغط على البوت لفتح المحرر المرئي.</p></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content"><h4>المحرر المرئي (Design Studio)</h4><p>شاشة بيضاء فيها "بلوكات" متصلة بخطوط. كل بلوك = خطوة في المحادثة مع العميل. تقدر تسحب بلوكات جديدة وتوصلها.</p></div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><h4>أنواع البلوكات المتاحة</h4>
+<p>• <strong>رسالة نصية:</strong> يرسل نص للعميل<br>
+• <strong>سؤال:</strong> يسأل العميل ويستقبل إجابته<br>
+• <strong>أزرار:</strong> يعرض خيارات للعميل يختار منها<br>
+• <strong>شرط:</strong> لو العميل قال X اسوِ Y وإلا اسوِ Z<br>
+• <strong>ربط API:</strong> يسحب بيانات من نظام خارجي<br>
+• <strong>قاعدة معرفة:</strong> يبحث في منتجاتك ويرد<br>
+• <strong>تحويل لموظف:</strong> يحوّل المحادثة للموظف البشري</p></div></div>
+<div class="step"><div class="step-num">4</div><div class="step-content"><h4>اختبار البوت</h4><p>اضغط "Test" أو "Simulate" لتجربة البوت قبل تفعيله على العملاء الحقيقيين.</p></div></div>
+</div>
+
+<div class="card">
+<h3>📚 شاشة قاعدة المعرفة (Knowledge Base)</h3>
+<p>هنا تضيف المحتوى اللي يتعلم منه البوت عشان يرد على العملاء:</p>
+<div class="step"><div class="step-num">1</div><div class="step-content"><h4>إضافة محتوى جديد</h4><p>اضغط "إضافة" واختر النوع: نص مباشر، رابط موقع، أو ملف PDF. البوت يقرأ المحتوى ويحفظه.</p></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content"><h4>أمثلة على محتوى مفيد</h4>
+<p>• كتالوج المنتجات (أسماء، أسعار، مواصفات)<br>
+• سياسة الشحن والتوصيل<br>
+• سياسة الإرجاع والاستبدال<br>
+• الأسئلة الشائعة (FAQ)<br>
+• مناطق التوصيل والأسعار</p></div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><h4>تحديث المحتوى</h4><p>كل ما تضيف أو تعدّل محتوى، البوت يتعلمه تلقائياً ويبدأ يستخدمه في ردوده.</p></div></div>
+</div>
+
+<div class="card">
+<h3>🏢 شاشة الأقسام (Departments)</h3>
+<p>الأقسام المعدّة في Tiledesk (نفس أقسام Chatwoot):</p>
+<div class="table-wrap"><table>
+<thead><tr><th>القسم</th><th>الوظيفة</th><th>متى يحوّل البوت إليه</th></tr></thead>
+<tbody>
+<tr><td><strong>المبيعات</strong></td><td>طلبات جديدة واستفسارات</td><td>عميل يبي يشتري أو يسأل عن منتج</td></tr>
+<tr><td><strong>الدعم الفني</strong></td><td>مشاكل وشكاوى</td><td>عميل عنده مشكلة أو يبي إرجاع</td></tr>
+<tr><td><strong>B2B</strong></td><td>شركات ومشاريع</td><td>شركة تبي طلب جملة أو تأثيث مشروع</td></tr>
+<tr><td><strong>الشحن</strong></td><td>متابعة شحنات</td><td>عميل يسأل عن حالة شحنته</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>📊 شاشة التقارير (Analytics)</h3>
+<p>تقارير أداء البوت تعطيك نظرة شاملة:</p>
+<ul>
+<li><strong>المحادثات الإجمالية:</strong> كم محادثة استقبل البوت اليوم/الأسبوع/الشهر</li>
+<li><strong>نسبة الحل التلقائي:</strong> كم % من المحادثات حلّها البوت بدون تدخل بشري</li>
+<li><strong>المحوّلة للموظفين:</strong> كم محادثة اتحوّلت لأنها تحتاج إنسان</li>
+<li><strong>أوقات الاستجابة:</strong> كم ثانية يأخذ البوت للرد</li>
+<li><strong>الأسئلة الأكثر تكراراً:</strong> وش أكثر شيء يسألون عنه العملاء — مفيد لتحسين قاعدة المعرفة</li>
+<li><strong>رضا العملاء:</strong> تقييم العملاء لردود البوت</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>⚙️ شاشة الإعدادات (Settings)</h3>
+<p>الإعدادات الرئيسية اللي يتحكم فيها المدير:</p>
+<ul>
+<li><strong>OpenAI API Key:</strong> مفتاح الذكاء الاصطناعي — مفعّل ✅</li>
+<li><strong>اسم المشروع:</strong> QAYDAO</li>
+<li><strong>ساعات العمل:</strong> تحديد أوقات عمل البوت والموظفين</li>
+<li><strong>رسالة الترحيب:</strong> أول رسالة يرسلها البوت للعميل</li>
+<li><strong>رسالة خارج الدوام:</strong> رسالة تظهر لما ما أحد متوفر</li>
+<li><strong>الويدجت (Widget):</strong> كود الشات اللي يُضاف للموقع — الألوان والشكل</li>
+<li><strong>الإشعارات:</strong> تنبيهات البريد والصوت</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>👨‍💼 شاشة الفريق (Teammates)</h3>
+<p>إدارة المستخدمين اللي عندهم صلاحية على Tiledesk:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>الصلاحيات</th></tr></thead>
+<tbody>
+<tr><td>رامي</td><td>rami@qaydao.com</td><td><span class="tag tag-yellow">Owner</span></td><td>تحكم كامل بكل شيء</td></tr>
+<tr><td>المشرف</td><td>supervisor@qaydao.com</td><td><span class="tag tag-blue">Admin</span></td><td>تعديل البوت + قاعدة المعرفة + التقارير</td></tr>
+<tr><td>أحمد</td><td>ahmed@qaydao.com</td><td><span class="tag tag-green">Agent</span></td><td>مراقبة المحادثات + التدخل عند الحاجة</td></tr>
+<tr><td>سارة</td><td>sara@qaydao.com</td><td><span class="tag tag-green">Agent</span></td><td>مراقبة المحادثات + التدخل عند الحاجة</td></tr>
+<tr><td>محمد</td><td>mohammed@qaydao.com</td><td><span class="tag tag-green">Agent</span></td><td>مراقبة المحادثات + التدخل عند الحاجة</td></tr>
+<tr><td>فاطمة</td><td>fatma@qaydao.com</td><td><span class="tag tag-green">Agent</span></td><td>مراقبة المحادثات + التدخل عند الحاجة</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>🔧 المهام اليومية للمشرف على Tiledesk</h3>
+<div class="step"><div class="step-num">صباحاً</div><div class="step-content"><h4>مراجعة تقارير الأمس</h4><p>ادخل التقارير ← شوف كم محادثة حل البوت ← كم حوّل ← وش الأسئلة اللي ما عرف يجاوبها</p></div></div>
+<div class="step"><div class="step-num">أسبوعياً</div><div class="step-content"><h4>تحديث قاعدة المعرفة</h4><p>أضف منتجات جديدة ← حدّث الأسعار ← أضف أسئلة شائعة جديدة بناءً على تقارير "الأسئلة اللي ما عرف يجاوبها"</p></div></div>
+<div class="step"><div class="step-num">شهرياً</div><div class="step-content"><h4>تحسين Flows البوت</h4><p>راجع ردود البوت ← عدّل الصياغة ← أضف سيناريوهات جديدة ← اختبر قبل التفعيل</p></div></div>
+</div>
+</div>
+
+<!-- === الربط === -->
+<div class="section" id="integration">
+<div class="section-header"><div class="section-icon" style="background:#faf5ff;color:#9333ea">🔗</div><h2>الربط بين النظامين — كيف يعملون مع بعض</h2></div>
+
+<div class="card">
+<h3>🔗 ملخص الربط</h3>
+<div class="table-wrap"><table>
+<thead><tr><th></th><th>Chatwoot (chat.qaydao.com)</th><th>Tiledesk (ai.qaydao.com)</th></tr></thead>
+<tbody>
+<tr><td><strong>الدور</strong></td><td>مكان عمل الموظف — إدارة المحادثات والتذاكر</td><td>البوت الذكي — يعمل تلقائياً في الخلفية</td></tr>
+<tr><td><strong>من يستخدمه</strong></td><td>كل الموظفين يومياً</td><td>المدير والمشرف فقط (للتعديل والمراقبة)</td></tr>
+<tr><td><strong>القنوات</strong></td><td>واتساب، إنستقرام، تيك توك، إيميل، الموقع</td><td>نفس القنوات (يستقبل أولاً)</td></tr>
+<tr><td><strong>AI</strong></td><td>Captain AI (يساعد الموظف يكتب)</td><td>بوت ذكي (يرد على العميل مباشرة)</td></tr>
+<tr><td><strong>لو تعطّل أحدهم</strong></td><td>تشتغل عادي بدون بوت</td><td>المحادثات تروح للموظف مباشرة</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>🛡️ ماذا يحدث لو البوت تعطّل؟</h3>
+<p><strong>لا شيء يتوقف!</strong> النظام مصمم ليكون آمناً:</p>
+<ul>
+<li>لو البوت ما رد خلال 10 ثواني ← المحادثة تروح مباشرة للموظف</li>
+<li>لا يوجد ازدواجية: لما البوت يرد ما يقدر الموظف يرد بنفس الوقت والعكس</li>
+<li>كل المحادثات محفوظة في Chatwoot حتى لو البوت تعطّل</li>
+</ul>
+</div>
+</div>
+
+<!-- === الاختصارات === -->
+<div class="section" id="shortcuts">
+<div class="section-header"><div class="section-icon" style="background:#eff6ff;color:#2563eb">⚡</div><h2>نصائح واختصارات</h2></div>
+
+<div class="card">
+<h3>⚡ الردود الجاهزة (Canned Responses)</h3>
+<p>بدل ما تكتب نفس الرد كل مرة، استخدم الردود الجاهزة:</p>
+<ul>
+<li>اكتب <code style="background:#f1f5f9;padding:2px 8px;border-radius:4px">/</code> في حقل الرد ← تظهر قائمة بالردود الجاهزة</li>
+<li>اكتب كلمة بعد / للبحث (مثل: <code>/شحن</code> أو <code>/مرحبا</code>)</li>
+<li>اضغط على الرد المناسب ← يتم إدراجه تلقائياً ← عدّل إن لزم وأرسل</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>⌨️ اختصارات لوحة المفاتيح</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>الاختصار</th><th>الوظيفة</th><th>متى تستخدمه</th></tr></thead>
+<tbody>
+<tr><td><code>Ctrl + Enter</code></td><td>إرسال الرد</td><td>أسرع من الضغط على زر الإرسال</td></tr>
+<tr><td><code>Ctrl + Shift + E</code></td><td>حل المحادثة (Resolve)</td><td>بعد ما تنتهي من حل مشكلة العميل</td></tr>
+<tr><td><code>Ctrl + /</code></td><td>بحث سريع</td><td>للبحث عن محادثة أو عميل</td></tr>
+<tr><td><code>Alt + N</code></td><td>ملاحظة داخلية</td><td>لكتابة ملاحظة لا يراها العميل</td></tr>
+<tr><td><code>/</code></td><td>الردود الجاهزة</td><td>لإدراج رد جاهز بسرعة</td></tr>
+</tbody>
+</table></div>
+</div>
+
+<div class="card">
+<h3>💡 نصائح ذهبية</h3>
+<ul>
+<li><strong>اقرأ الملخص أولاً:</strong> لو المحادثة من البوت، اقرأ الملخص الذكي قبل ما ترد</li>
+<li><strong>صنّف فوراً:</strong> حدد التصنيف والأولوية عند أول رد — لا تأجل</li>
+<li><strong>استخدم الملاحظات:</strong> وثّق أي اتفاق أو معلومة مهمة في ملاحظة داخلية</li>
+<li><strong>حوّل بسرعة:</strong> لو المحادثة مش تخصصك، حوّلها فوراً مع ملاحظة</li>
+<li><strong>استخدم Captain AI:</strong> وفّر وقتك — خل الذكاء الاصطناعي يساعدك تكتب ردود أفضل</li>
+<li><strong>تابع SLA:</strong> راقب التنبيهات الحمراء — لا تخلي أي محادثة تتجاوز الوقت المحدد</li>
+</ul>
+</div>
+</div>
+
+<!-- === الحسابات === -->
+<div class="section" id="accounts">
+<div class="section-header"><div class="section-icon" style="background:#f0fdfa;color:#0f766e">👤</div><h2>حسابات الموظفين</h2></div>
+
+<div class="cred-box">
+<h3>🔑 بيانات الدخول — نظام المحادثات (chat.qaydao.com)</h3>
+<p style="color:#94a3b8;font-size:13px;margin-bottom:14px">كلمة المرور الابتدائية لجميع الحسابات: <strong style="color:#5eead4">Qaydao@2026</strong></p>
+<div class="cred-row"><span class="cred-label">👨‍💼 أحمد — فريق المبيعات</span><span class="cred-value">ahmed@qaydao.com</span></div>
+<div class="cred-row"><span class="cred-label">👩‍💼 سارة — فريق الدعم الفني</span><span class="cred-value">sara@qaydao.com</span></div>
+<div class="cred-row"><span class="cred-label">👨‍💼 محمد — فريق B2B</span><span class="cred-value">mohammed@qaydao.com</span></div>
+<div class="cred-row"><span class="cred-label">👩‍💼 فاطمة — فريق الشحن</span><span class="cred-value">fatma@qaydao.com</span></div>
+<div class="cred-row"><span class="cred-label">👨‍💻 المشرف العام — إدارة كاملة</span><span class="cred-value">supervisor@qaydao.com</span></div>
+<div class="cred-row"><span class="cred-label">👑 رامي — مدير النظام</span><span class="cred-value">admin@qaydao.com</span></div>
+</div>
+
+<div class="cred-box" style="background:linear-gradient(135deg,#1e1b4b,#312e81)">
+<h3 style="color:#a5b4fc">🤖 بيانات الدخول — البوت الذكي (ai.qaydao.com) — للمدير والمشرف فقط</h3>
+<p style="color:#94a3b8;font-size:13px;margin-bottom:14px">كلمة المرور: <strong style="color:#a5b4fc">Qaydao@2026</strong> | حساب المدير: <strong style="color:#a5b4fc">Lami@2020</strong></p>
+<div class="cred-row"><span class="cred-label">👑 رامي — مدير النظام</span><span class="cred-value">rami@qaydao.com</span></div>
+<div class="cred-row"><span class="cred-label">👨‍💻 المشرف العام</span><span class="cred-value">supervisor@qaydao.com</span></div>
+</div>
+
+<div class="alert alert-warn"><span class="alert-icon">⚠️</span><div><strong>أمان:</strong> غيّر كلمة المرور فوراً بعد أول دخول من: <strong>الإعدادات ← الملف الشخصي ← تغيير كلمة المرور</strong> — في كلا النظامين.</div></div>
+</div>
+
+<!-- === FAQ === -->
+<div class="section" id="faq">
+<div class="section-header"><div class="section-icon" style="background:#fefce8;color:#ca8a04">❓</div><h2>أسئلة شائعة</h2></div>
+
+<div class="card">
+<h3>❓ هل أحتاج أفتح نظامين؟</h3>
+<p><strong>لا.</strong> أنت كموظف تفتح <strong>chat.qaydao.com فقط</strong>. البوت الذكي (ai.qaydao.com) يعمل في الخلفية تلقائياً.</p>
+</div>
+
+<div class="card">
+<h3>❓ المحادثة اللي وصلتني فيها رسائل من "بوت" — وش أسوي؟</h3>
+<p>هذي محادثة البوت حاول يحلها لكن ما قدر وحوّلها لك. <strong>اقرأ الملخص في الأعلى</strong> واكمل من حيث وقف البوت. لا تكرر الأسئلة.</p>
+</div>
+
+<div class="card">
+<h3>❓ العميل يشتكي إن البوت ما فهمه — وش أسوي؟</h3>
+<p>اعتذر للعميل بلطف وقل: "أعتذر، خلني أساعدك شخصياً". ثم حل مشكلته وأبلغ المشرف عشان يعدّل ردود البوت.</p>
+</div>
+
+<div class="card">
+<h3>❓ كيف أرجّع محادثة للبوت؟</h3>
+<p>حالياً هذي الميزة متاحة <strong>للمشرف فقط</strong>. لو تبي ترجّع محادثة للبوت، تواصل مع المشرف.</p>
+</div>
+
+<div class="card">
+<h3>❓ البوت توقف — المحادثات ما توصلني؟</h3>
+<p><strong>لا تقلق.</strong> لو البوت توقف، كل المحادثات تروح لك مباشرة بدون أي تأخير. النظام مصمم ليكون آمناً.</p>
+</div>
+
+<div class="card">
+<h3>❓ كيف أشوف تقييمات العملاء لي؟</h3>
+<p>من القائمة الجانبية ← <strong>التقارير</strong> ← <strong>CSAT</strong>. ستشوف كل التقييمات اللي حصلت عليها مع تعليقات العملاء.</p>
+</div>
+
+<div class="card">
+<h3>❓ عندي مشكلة تقنية — مين أتواصل معه؟</h3>
+<p>تواصل مع المشرف العام (supervisor@qaydao.com) أو المدير (rami@qaydao.com). لا تحاول تعدّل إعدادات النظام بنفسك.</p>
+</div>
+</div>
+
+</div>
+
+<div class="footer">
+<p><strong>© 2026 QAYDAO</strong> — نظام خدمة العملاء المتكامل</p>
+<p style="margin-top:8px">نظام المحادثات: <a href="https://chat.qaydao.com" style="color:var(--brand)">chat.qaydao.com</a> | البوت الذكي: <a href="https://ai.qaydao.com/dashboard" style="color:#6366f1">ai.qaydao.com</a></p>
+<p style="margin-top:8px;color:#94a3b8">للدعم: rami@qaydao.com | آخر تحديث: مارس 2026 | الإصدار 2.0</p>
+</div>
+
+<script>
+document.querySelectorAll('.nav a').forEach(a=>{a.addEventListener('click',e=>{e.preventDefault();const t=document.querySelector(a.getAttribute('href'));if(t)t.scrollIntoView({behavior:'smooth'});document.querySelectorAll('.nav a').forEach(l=>l.classList.remove('active'));a.classList.add('active')})});
+const sections=document.querySelectorAll('.section'),navLinks=document.querySelectorAll('.nav a');
+window.addEventListener('scroll',()=>{let c='';sections.forEach(s=>{if(window.scrollY>=s.offsetTop-100)c=s.getAttribute('id')});navLinks.forEach(l=>{l.classList.remove('active');if(l.getAttribute('href')==='#'+c)l.classList.add('active')})});
+</script>
+</body>
+</html>
