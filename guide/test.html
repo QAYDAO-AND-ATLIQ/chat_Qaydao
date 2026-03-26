@@ -3,167 +3,218 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QAYDAO — تجربة خدمة العملاء</title>
+<title>QAYDAO — تجربة الشات كعميل</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Cairo',sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}
-.header{background:linear-gradient(135deg,#0d4f4a,#0f766e 50%,#14b8a6);color:#fff;padding:30px 24px;text-align:center}
-.header h1{font-size:28px;font-weight:900;margin-bottom:6px}
-.header p{font-size:15px;opacity:.85}
-.badge{display:inline-block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);padding:4px 16px;border-radius:999px;font-size:12px;margin-bottom:12px;backdrop-filter:blur(4px)}
-.container{max-width:900px;margin:0 auto;padding:30px 24px}
-.alert{padding:16px 20px;border-radius:12px;margin-bottom:20px;font-size:14px;display:flex;gap:10px;align-items:flex-start;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
-.alert-warn{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
-.alert-icon{font-size:18px;flex-shrink:0}
-.scenarios{display:grid;gap:16px;margin:20px 0}
-.scenario{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;cursor:pointer;transition:.2s}
-.scenario:hover{border-color:#14b8a6;box-shadow:0 4px 16px rgba(0,0,0,.06);transform:translateY(-2px)}
-.scenario h3{font-size:16px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
-.scenario p{font-size:13px;color:#64748b;line-height:1.8}
-.scenario .msg{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px 16px;margin-top:10px;font-size:13px;color:#0d4f4a;font-weight:600;direction:rtl}
-.scenario .copy-btn{display:inline-block;margin-top:8px;padding:6px 14px;background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Cairo'}
-.scenario .copy-btn:hover{background:#0d4f4a}
-.section-title{font-size:20px;font-weight:800;margin:30px 0 16px;color:#0d4f4a;display:flex;align-items:center;gap:10px}
-.steps{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px;margin-bottom:20px}
-.step{display:flex;gap:14px;margin-bottom:16px}
-.step:last-child{margin-bottom:0}
+body{font-family:'Cairo',sans-serif;background:#f8fafc;color:#1e293b}
+
+/* Fake QAYDAO Website Header */
+.site-header{background:#0f766e;color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:center}
+.site-header h1{font-size:22px;font-weight:900;letter-spacing:1px}
+.site-header nav{display:flex;gap:24px}
+.site-header nav a{color:rgba(255,255,255,.8);text-decoration:none;font-size:14px;font-weight:600}
+.site-header nav a:hover{color:#fff}
+
+/* Banner */
+.banner{background:linear-gradient(135deg,#0d4f4a,#14b8a6);padding:50px 24px;text-align:center;color:#fff;position:relative;overflow:hidden}
+.banner::after{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")}
+.banner h2{font-size:clamp(24px,4vw,36px);font-weight:900;position:relative;margin-bottom:12px}
+.banner p{font-size:16px;opacity:.9;position:relative;max-width:500px;margin:0 auto 20px}
+
+/* Test notice */
+.test-notice{background:#fefce8;border:2px solid #fbbf24;border-radius:12px;padding:20px;max-width:800px;margin:-30px auto 0;position:relative;z-index:10;text-align:center}
+.test-notice h3{color:#92400e;font-size:18px;margin-bottom:8px}
+.test-notice p{color:#78350f;font-size:14px;line-height:1.8}
+
+/* Content */
+.content{max-width:800px;margin:30px auto;padding:0 24px}
+.instruction-box{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.instruction-box h3{font-size:16px;font-weight:700;color:#0d4f4a;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.instruction-box p,.instruction-box li{font-size:14px;color:#64748b;line-height:1.9}
+.instruction-box ul{padding-right:20px}
+.instruction-box li{margin-bottom:6px}
+
+.step-row{display:flex;gap:14px;margin-bottom:14px}
 .step-n{width:32px;height:32px;border-radius:50%;background:#0f766e;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
 .step-c h4{font-size:14px;font-weight:700;margin-bottom:2px}
 .step-c p{font-size:13px;color:#64748b}
-.footer{text-align:center;padding:30px 24px;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0;margin-top:40px}
-.tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700}
+
+/* Scenarios */
+.scenarios-title{font-size:18px;font-weight:800;color:#0d4f4a;margin:30px 0 16px;display:flex;align-items:center;gap:8px}
+.scenario{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin-bottom:12px;transition:.2s}
+.scenario:hover{border-color:#14b8a6;box-shadow:0 4px 12px rgba(0,0,0,.05)}
+.scenario-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+.scenario h4{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+.tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700}
 .tag-green{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+.tag-red{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
 .tag-blue{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe}
+.tag-orange{background:#fff7ed;color:#ea580c;border:1px solid #fed7aa}
+.tag-cyan{background:#ecfeff;color:#0891b2;border:1px solid #a5f3fc}
+.tag-purple{background:#faf5ff;color:#9333ea;border:1px solid #e9d5ff}
+.scenario p{font-size:12px;color:#94a3b8;margin-bottom:8px}
+.msg-box{background:#f0fdfa;border:1px dashed #5eead4;border-radius:8px;padding:12px 14px;font-size:14px;color:#0d4f4a;font-weight:600;line-height:1.7}
+.copy-btn{display:inline-block;margin-top:8px;padding:5px 14px;background:#0f766e;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Cairo';transition:.15s}
+.copy-btn:hover{background:#0d4f4a}
+
+/* Checklist */
+.checklist{background:linear-gradient(135deg,#f0fdfa,#ecfeff);border:2px solid #14b8a6;border-radius:14px;padding:24px;margin:30px 0}
+.checklist h3{color:#0d4f4a;font-size:16px;font-weight:800;margin-bottom:14px}
+.check-item{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;font-size:14px}
+.check-item span:first-child{font-size:18px}
+
+/* Products Grid */
+.products{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin:30px 0}
+.product-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;text-align:center;transition:.2s}
+.product-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.product-img{height:120px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;font-size:40px}
+.product-info{padding:12px}
+.product-info h4{font-size:13px;font-weight:700;margin-bottom:4px}
+.product-info p{font-size:12px;color:#64748b}
+.product-info .price{color:#0f766e;font-weight:800;font-size:14px;margin-top:4px}
+
+.footer{text-align:center;padding:30px 24px;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0;margin-top:40px}
+.footer a{color:#0f766e;font-weight:600;text-decoration:none}
+
+@media(max-width:600px){.site-header nav{display:none}.products{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
 
-<div class="header">
-<div class="badge">🧪 صفحة تجريبية — للموظفين فقط</div>
-<h1>تجربة نظام خدمة العملاء</h1>
-<p>هذه الصفحة مخصصة لتجربة النظام كعميل — استخدم الشات في أسفل الصفحة لإرسال رسائل تجريبية</p>
+<!-- Fake QAYDAO Website -->
+<div class="site-header">
+<h1>QAYDAO</h1>
+<nav>
+<a href="#">الرئيسية</a>
+<a href="#">المنتجات</a>
+<a href="#">المشاريع</a>
+<a href="#">من نحن</a>
+<a href="#">تواصل معنا</a>
+</nav>
 </div>
 
-<div class="container">
-
-<div class="alert">
-<span class="alert-icon">💡</span>
-<div><strong>كيف تستخدم هذه الصفحة:</strong> اضغط على أيقونة الشات 💬 في أسفل يسار الشاشة وأرسل رسالة كأنك عميل. ستظهر رسالتك في <strong>chat.qaydao.com</strong> عند الموظف المناوب.</div>
+<div class="banner">
+<h2>أثاث عصري بجودة عالية</h2>
+<p>نوفر لك أفضل الحلول لتأثيث منزلك ومشاريعك بأسعار منافسة</p>
 </div>
 
-<div class="alert alert-warn">
-<span class="alert-icon">⚠️</span>
-<div><strong>تنبيه:</strong> هذه صفحة تجريبية فقط. لا ترسل بيانات حقيقية. الهدف هو تدريب الفريق على النظام قبل إطلاقه للعملاء الحقيقيين.</div>
+<div class="test-notice">
+<h3>🧪 هذه صفحة تجريبية للموظفين</h3>
+<p>تخيّل نفسك عميل يزور موقع QAYDAO لأول مرة. اضغط على <strong>أيقونة الشات 💬</strong> في أسفل الشاشة وأرسل رسالة. ستظهر الرسالة في <strong>chat.qaydao.com</strong> عند الموظف المناوب.</p>
 </div>
 
-<div class="section-title">📋 خطوات التجربة</div>
-<div class="steps">
-<div class="step"><div class="step-n">1</div><div class="step-c"><h4>افتح الشات</h4><p>اضغط على أيقونة الشات 💬 في أسفل يسار الشاشة</p></div></div>
-<div class="step"><div class="step-n">2</div><div class="step-c"><h4>أرسل رسالة كعميل</h4><p>اختر أحد السيناريوهات أدناه وانسخ الرسالة، أو اكتب رسالتك الخاصة</p></div></div>
-<div class="step"><div class="step-n">3</div><div class="step-c"><h4>افتح Chatwoot في تبويب ثاني</h4><p>ادخل <strong>chat.qaydao.com</strong> بحساب موظف وشوف المحادثة وصلت</p></div></div>
-<div class="step"><div class="step-n">4</div><div class="step-c"><h4>رد على المحادثة</h4><p>طبّق الخطوات اللي تعلمتها من الدليل: صنّف، حدد الأولوية، ورد</p></div></div>
-<div class="step"><div class="step-n">5</div><div class="step-c"><h4>أغلق وقيّم</h4><p>بعد ما تحل المشكلة، أغلق المحادثة وشوف تقييم CSAT</p></div></div>
+<div class="content">
+
+<!-- Products -->
+<div class="products">
+<div class="product-card"><div class="product-img">🛋️</div><div class="product-info"><h4>كنب مودرن L</h4><p>قماش مقاوم للبقع</p><div class="price">4,500 ر.س</div></div></div>
+<div class="product-card"><div class="product-img">🪑</div><div class="product-info"><h4>كرسي مكتب</h4><p>إرجونومي — ظهر شبكي</p><div class="price">1,200 ر.س</div></div></div>
+<div class="product-card"><div class="product-img">🛏️</div><div class="product-info"><h4>سرير كينج مع تخزين</h4><p>خشب زان + هيدروليك</p><div class="price">3,800 ر.س</div></div></div>
+<div class="product-card"><div class="product-img">🍽️</div><div class="product-info"><h4>طاولة طعام 6 أشخاص</h4><p>رخام طبيعي + حديد</p><div class="price">2,900 ر.س</div></div></div>
 </div>
 
-<div class="section-title">🎭 سيناريوهات تجريبية</div>
-<p style="font-size:14px;color:#64748b;margin-bottom:16px">انسخ أي رسالة من السيناريوهات التالية وأرسلها في الشات لتجربة النظام:</p>
+<!-- Instructions -->
+<div class="instruction-box">
+<h3>📋 كيف تستخدم هذه الصفحة</h3>
+<div class="step-row"><div class="step-n">1</div><div class="step-c"><h4>اضغط على أيقونة الشات 💬</h4><p>في أسفل يسار الشاشة — هذا نفس الشات اللي يشوفه العملاء الحقيقيين</p></div></div>
+<div class="step-row"><div class="step-n">2</div><div class="step-c"><h4>أرسل رسالة كأنك عميل</h4><p>اختر من السيناريوهات أسفل أو اكتب رسالتك الخاصة</p></div></div>
+<div class="step-row"><div class="step-n">3</div><div class="step-c"><h4>افتح chat.qaydao.com في تبويب ثاني</h4><p>سجّل دخول بحساب موظف وشوف المحادثة وصلت في صندوق الوارد</p></div></div>
+<div class="step-row"><div class="step-n">4</div><div class="step-c"><h4>رد على المحادثة وصنّفها</h4><p>طبّق اللي تعلمته: تصنيف + أولوية + رد + إغلاق</p></div></div>
+<div class="step-row"><div class="step-n">5</div><div class="step-c"><h4>ارجع هنا وشوف الرد</h4><p>الرد اللي أرسلته من Chatwoot يظهر هنا في الشات — نفس ما يشوفه العميل</p></div></div>
+</div>
 
-<div class="scenarios">
+<!-- Scenarios -->
+<div class="scenarios-title">🎭 سيناريوهات جاهزة — انسخ وأرسل في الشات</div>
 
 <div class="scenario">
-<h3><span class="tag tag-green">طلب جديد</span> عميل يبي يشتري كنب</h3>
-<p>عميل فردي يبحث عن كنب لغرفة المعيشة. يجب تصنيفه كـ "طلب_جديد" + "عميل_عادي" + أولوية "عادي"</p>
-<div class="msg">السلام عليكم، أبي كنب مودرن لغرفة المعيشة، ميزانيتي حوالي 5000 ريال. وش عندكم؟</div>
-<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
-</div>
-
-<div class="scenario">
-<h3><span class="tag tag-blue">استفسار</span> سؤال عن التوصيل</h3>
-<p>عميل يسأل عن مناطق التوصيل والمدة. تصنيف: "استفسار" + أولوية "عادي"</p>
-<div class="msg">مرحبا، هل توصلون لمنطقة أبحر الشمالية بجدة؟ وكم المدة؟</div>
-<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
-</div>
-
-<div class="scenario">
-<h3><span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca" class="tag">شكوى عاجلة</span> عميل VIP غاضب</h3>
-<p>عميل VIP متكرر عنده مشكلة حرجة. يجب: "شكوى" + "VIP" + أولوية "عاجل" + SLA 5 دقائق!</p>
-<div class="msg">أنا عميل عندكم من سنتين وأشتري شهرياً! طلبت طاولة طعام قبل أسبوعين وما وصلتني ولا أحد يرد علي! هذا آخر تعامل معكم!</div>
-<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
-</div>
-
-<div class="scenario">
-<h3><span style="background:#ecfeff;color:#0891b2;border:1px solid #a5f3fc" class="tag">B2B</span> شركة تبي تأثيث مكتب</h3>
-<p>شركة تبي تأثيث مشروع كامل. يجب: "تأثيث_مشروع" + "شركات" + تحويل لفريق B2B</p>
-<div class="msg">السلام عليكم، أنا من شركة المستقبل للمقاولات. نحتاج تأثيث مكتب جديد 30 موظف (مكاتب + كراسي + طاولة اجتماعات + استقبال). نبي عرض سعر شامل.</div>
-<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+<div class="scenario-header"><h4><span class="tag tag-green">طلب جديد</span> عميل يبي كنب</h4></div>
+<p>المطلوب: صنّفه "طلب_جديد" + "عميل_عادي" + أولوية "عادي"</p>
+<div class="msg-box">السلام عليكم، أبي كنب مودرن لغرفة المعيشة، ميزانيتي حوالي 5000 ريال. وش عندكم؟</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ</button>
 </div>
 
 <div class="scenario">
-<h3><span style="background:#fff7ed;color:#ea580c;border:1px solid #fed7aa" class="tag">شحن</span> متابعة شحنة</h3>
-<p>عميل يتابع طلبه. تصنيف: "الشحن" + تحويل لفريق الشحن</p>
-<div class="msg">مرحبا، طلبي رقم QD-2024-1587 المفروض يوصل أمس وما وصل. وين طلبي؟</div>
-<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+<div class="scenario-header"><h4><span class="tag tag-blue">استفسار</span> سؤال عن التوصيل</h4></div>
+<p>المطلوب: صنّفه "استفسار" + أولوية "عادي"</p>
+<div class="msg-box">مرحبا، هل توصلون لمنطقة أبحر الشمالية بجدة؟ وكم المدة المتوقعة؟</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ</button>
 </div>
 
 <div class="scenario">
-<h3><span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca" class="tag">إرجاع</span> طلب إرجاع منتج</h3>
-<p>عميل يبي يرجع منتج. تصنيف: "الإرجاع" + أولوية "متوسط"</p>
-<div class="msg">أبي أرجع الكرسي اللي اشتريته الأسبوع الماضي. اللون مختلف عن الصورة في الموقع. رقم الطلب QD-2024-1592</div>
-<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+<div class="scenario-header"><h4><span class="tag tag-red">شكوى عاجلة</span> عميل VIP غاضب</h4></div>
+<p>المطلوب: "شكوى" + "VIP" + أولوية "عاجل" ← SLA 5 دقائق!</p>
+<div class="msg-box">أنا عميل عندكم من سنتين وأشتري شهرياً! طلبت طاولة طعام قبل أسبوعين ولا أحد رد علي! هذا آخر تعامل معكم!</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ</button>
 </div>
 
 <div class="scenario">
-<h3><span style="background:#fff7ed;color:#ea580c;border:1px solid #fed7aa" class="tag">صيانة</span> طلب صيانة</h3>
-<p>عميل يحتاج صيانة. تصنيف: "صيانة" + أولوية "عادي"</p>
-<div class="msg">مرحبا، اشتريت منكم سرير قبل 6 شهور والآلية اللي ترفع الرأس ما تشتغل. هل عندكم خدمة صيانة؟</div>
-<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ الرسالة</button>
+<div class="scenario-header"><h4><span class="tag tag-cyan">B2B</span> شركة تبي تأثيث مكتب</h4></div>
+<p>المطلوب: "تأثيث_مشروع" + "شركات" + تحويل لفريق B2B</p>
+<div class="msg-box">السلام عليكم، معكم شركة المستقبل للمقاولات. نحتاج تأثيث مكتب 30 موظف كامل. نبي عرض سعر.</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ</button>
 </div>
 
+<div class="scenario">
+<div class="scenario-header"><h4><span class="tag tag-orange">شحن</span> متابعة شحنة</h4></div>
+<p>المطلوب: "الشحن" + تحويل لفريق الشحن</p>
+<div class="msg-box">مرحبا، طلبي رقم QD-2024-1587 المفروض وصل أمس وما وصل. وين طلبي؟</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ</button>
 </div>
 
-<div class="section-title">✅ قائمة التحقق للموظف</div>
-<div class="steps">
-<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل صنّفت المحادثة؟</h4><p>أضف تصنيف نوع الطلب (شحن/إرجاع/استفسار/شكوى/طلب جديد/صيانة/تأثيث/B2B)</p></div></div>
-<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل حددت الأولوية؟</h4><p>عاجل (أحمر) / متوسط (برتقالي) / عادي (أخضر)</p></div></div>
-<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل صنّفت العميل؟</h4><p>VIP / شركات / مورد / عميل عادي / عميل مشاريع</p></div></div>
-<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل رديت خلال SLA؟</h4><p>عاجل: 5 دقائق | متوسط: 30 دقيقة | عادي: ساعة</p></div></div>
-<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل حوّلت للقسم الصحيح؟</h4><p>مبيعات / دعم فني / B2B / شحن</p></div></div>
-<div class="step"><div class="step-n">☐</div><div class="step-c"><h4>هل استخدمت Captain AI؟</h4><p>جرّب اقتراح الرد الذكي (✨) أو تحسين النص</p></div></div>
+<div class="scenario">
+<div class="scenario-header"><h4><span class="tag tag-red">إرجاع</span> طلب إرجاع</h4></div>
+<p>المطلوب: "الإرجاع" + أولوية "متوسط"</p>
+<div class="msg-box">أبي أرجع الكرسي اللي اشتريته الأسبوع الماضي. اللون مختلف عن الصورة. رقم الطلب QD-2024-1592</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ</button>
+</div>
+
+<div class="scenario">
+<div class="scenario-header"><h4><span class="tag tag-purple">صيانة</span> طلب صيانة</h4></div>
+<p>المطلوب: "صيانة" + أولوية "عادي"</p>
+<div class="msg-box">اشتريت سرير قبل 6 شهور والآلية اللي ترفع الرأس خربت. هل عندكم صيانة؟</div>
+<button class="copy-btn" onclick="copyMsg(this)">📋 نسخ</button>
+</div>
+
+<!-- Checklist -->
+<div class="checklist">
+<h3>✅ قائمة التحقق — تأكد سويت كل هذا</h3>
+<div class="check-item"><span>☐</span><div><strong>صنّفت المحادثة</strong> (شحن / إرجاع / استفسار / شكوى / طلب جديد / صيانة / تأثيث / B2B)</div></div>
+<div class="check-item"><span>☐</span><div><strong>حددت الأولوية</strong> (عاجل / متوسط / عادي)</div></div>
+<div class="check-item"><span>☐</span><div><strong>صنّفت العميل</strong> (VIP / شركات / مورد / عميل عادي / عميل مشاريع)</div></div>
+<div class="check-item"><span>☐</span><div><strong>رديت خلال SLA</strong> (عاجل: 5 دقائق | متوسط: 30 دقيقة | عادي: ساعة)</div></div>
+<div class="check-item"><span>☐</span><div><strong>حوّلت للقسم الصحيح</strong> إذا مش تخصصك</div></div>
+<div class="check-item"><span>☐</span><div><strong>جربت Captain AI</strong> — اضغط ✨ لاقتراح رد ذكي</div></div>
+<div class="check-item"><span>☐</span><div><strong>أغلقت المحادثة</strong> بعد الحل وشفت تقييم CSAT</div></div>
 </div>
 
 </div>
 
 <div class="footer">
-<p><strong>QAYDAO</strong> — صفحة تجربة نظام خدمة العملاء</p>
-<p style="margin-top:6px">دليل الموظفين: <a href="https://chat.qaydao.com/guide/" style="color:#0f766e">chat.qaydao.com/guide</a> | نظام المحادثات: <a href="https://chat.qaydao.com" style="color:#0f766e">chat.qaydao.com</a></p>
+<p>🧪 صفحة تجريبية — للموظفين فقط</p>
+<p style="margin-top:8px"><a href="https://chat.qaydao.com/guide/">📘 دليل الموظفين</a> · <a href="https://chat.qaydao.com">💬 نظام المحادثات</a></p>
 </div>
 
-<!-- Chatwoot Widget -->
+<!-- Chatwoot Live Chat Widget -->
 <script>
 (function(d,t) {
   var BASE_URL="https://chat.qaydao.com";
   var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
   g.src=BASE_URL+"/packs/js/sdk.js";
-  g.defer=true;
-  g.async=true;
+  g.defer=true;g.async=true;
   s.parentNode.insertBefore(g,s);
   g.onload=function(){
-    window.chatwootSDK.run({
-      websiteToken: 'Js7E1tDg4uwadUDt8g7jaiUu',
-      baseUrl: BASE_URL
-    })
+    window.chatwootSDK.run({websiteToken:'Js7E1tDg4uwadUDt8g7jaiUu',baseUrl:BASE_URL})
   }
 })(document,"script");
 
-function copyMsg(btn) {
-  var msg = btn.previousElementSibling.textContent;
-  navigator.clipboard.writeText(msg).then(function() {
-    btn.textContent = '✅ تم النسخ!';
-    setTimeout(function() { btn.textContent = '📋 نسخ الرسالة'; }, 2000);
+function copyMsg(btn){
+  var msg=btn.previousElementSibling.textContent.trim();
+  navigator.clipboard.writeText(msg).then(function(){
+    btn.textContent='✅ تم النسخ!';
+    setTimeout(function(){btn.textContent='📋 نسخ'},2000);
   });
 }
 </script>
-
 </body>
 </html>
