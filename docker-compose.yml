@@ -46,6 +46,8 @@ services:
       # QAYDAO patch: preserve quoted context for messages from outside Chatwoot (e.g. Whatomate)
       - ./patches/services/messages/in_reply_to_message_builder.rb:/app/app/services/messages/in_reply_to_message_builder.rb:ro
       - ./patches/finders/conversation_finder.rb:/app/app/finders/conversation_finder.rb:ro
+      - ./patches/jobs/qaydao_retry_unassigned_conversations_job.rb:/app/app/jobs/qaydao_retry_unassigned_conversations_job.rb:ro
+      - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
 
   chatwoot-sidekiq:
     image: chatwoot/chatwoot:v4.13.0
@@ -68,6 +70,8 @@ services:
       # QAYDAO patch: same as chatwoot-web
       - ./patches/services/messages/in_reply_to_message_builder.rb:/app/app/services/messages/in_reply_to_message_builder.rb:ro
       - ./patches/finders/conversation_finder.rb:/app/app/finders/conversation_finder.rb:ro
+      - ./patches/jobs/qaydao_retry_unassigned_conversations_job.rb:/app/app/jobs/qaydao_retry_unassigned_conversations_job.rb:ro
+      - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
 
 networks:
   chatwoot-internal:

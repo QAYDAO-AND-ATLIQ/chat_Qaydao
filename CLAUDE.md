@@ -292,3 +292,64 @@ INSERT INTO team_members (team_id, user_id, created_at, updated_at) VALUES
 -- 3. Clear backfilled team_id (only the ones we set)
 -- WARNING: this also clears any other team_id=2 set since 2026-05-05. Use with care.
 ```
+
+### 2026-05-05 (final 2) — Cron-based unassigned recovery + Fai fallback
+**Problem:** After implementing team-based assignment, a new gap appeared: if both شيماء AND مروة are offline when a customer messages during working hours, the conversation stays `assignee_id = NULL` forever. Chatwoot's auto-assignment only re-runs on conversation status changes, never on agent online/offline transitions.
+
+**Solution:** Custom cron job that runs every 5 minutes with priority logic:
+1. **Step 1 — Primary:** Call existing `AutoAssignment::AssignmentJob` for each target inbox. This uses the team-based assignment we set up earlier (شيماء + مروة via team 2).
+2. **Step 2 — Fallback:** If primary team is **fully offline** AND Fai is online → assign all remaining unassigned conversations to Fai. This is intentional for QAYDAO: Fai is the customer service department head, so falling back to her is acceptable.
+3. **Step 3 — None:** If Fai is also offline → leave unassigned (visible in "غير معيّن" tab + managers' "الكل" view).
+
+**Why custom job (not Chatwoot's built-in `PeriodicAssignmentJob`):**
+- Built-in job filters via `inbox.joins(:assignment_policy)` — our inboxes have no `assignment_policy` so it skips them entirely.
+- Built-in runs every 30 minutes; ours runs every 5 (faster recovery).
+- Built-in has no fallback concept; we need Fai-as-last-resort.
+
+**Files added (bind-mounted, like other patches):**
+- `patches/jobs/qaydao_retry_unassigned_conversations_job.rb` — the job class with 4 sceanrio handling
+- `patches/initializers/qaydao_cron_jobs.rb` — registers the schedule via `Sidekiq::Cron::Job.create`
+
+**Schedule:** `*/5 * * * *` (every 5 minutes) on `scheduled_jobs` queue.
+
+**Configuration constants in job (to update if team changes):**
+```ruby
+TARGET_INBOX_IDS  = [2, 3, 5, 6]    # Email, WebWidget, WhatsApp, Instagram
+PRIMARY_TEAM_ID   = 2                # الدعم الفني (شيماء + مروة)
+FALLBACK_EMAILS   = %w[fay@qaydao.com]  # ordered by priority (extend list to add more)
+```
+
+**Verification (all passed):**
+- Ruby syntax: ✅ both files
+- Cron registered in Sidekiq: ✅ `qaydao_retry_unassigned_conversations` listed alongside core jobs
+- Idempotent on empty input: ✅ ran cleanly with 0 unassigned conversations
+- Fallback decision logic (4 scenarios via Rails console):
+  - شيماء online → SKIP fallback ✅
+  - Team offline + Fai online → returns Fai ✅
+  - Everyone offline → returns nil ✅
+  - rami online (not in FALLBACK_EMAILS) → returns nil ✅
+- End-to-end transaction-wrapped test: created unassigned conversation → ran job → ✅ assigned to شيماء (correct, since she's online); transaction rolled back (no permanent changes).
+
+**Behavior matrix:**
+| شيماء | مروة | Fai | Result |
+|-------|------|-----|--------|
+| 🟢 | any | any | round-robin between online team members |
+| 🔴 | 🟢 | any | round-robin to مروة |
+| 🔴 | 🔴 | 🟢 | **fallback to Fai** (NEW) |
+| 🔴 | 🔴 | 🔴 | unassigned, retried in 5 min |
+
+**Operational notes:**
+- Max delay for unassigned conversation pickup: 5 minutes (next cron tick).
+- The job is safe to re-run (idempotent) — if conversation already assigned, no action.
+- Fai's assignments via fallback can be distinguished from her direct picks via the conversation `assignee_last_seen_at` and Sidekiq logs (search for `[QAYDAO Fallback]`).
+- To add more fallback candidates (e.g., maali if Fai is also offline): append email to `FALLBACK_EMAILS` array.
+- To temporarily disable: `Sidekiq::Cron::Job.find('qaydao_retry_unassigned_conversations').disable!`
+
+**Rollback:**
+```bash
+# 1. Remove bind-mount lines from docker-compose.yml (the 2 lines ending in ...job.rb and qaydao_cron_jobs.rb)
+# 2. Recreate containers — initializer won't load → cron job auto-deleted on next deploy cycle
+cd /root/chat-qaydao && docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
+# 3. Manually clean up Redis cron entry (if needed):
+docker exec chatwoot_sidekiq bundle exec rails runner "Sidekiq::Cron::Job.destroy('qaydao_retry_unassigned_conversations')"
+```
