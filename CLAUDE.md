@@ -119,3 +119,106 @@ docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
 **Verification:** API checks confirmed `maali` now sees all 38 open conversations (was 23), and `rami` sees full data under his own login.
 
 **Backups:** `backups/20260503/chatwoot_pre_unification_*.sql.gz` + `.env.bak.*` + `docker-compose.yml.bak.*`.
+
+### 2026-05-05 — Manager "All Active" Custom View
+**Problem reported:** رامي (manager) couldn't see conversations #89 and #285 in tab "All". Investigation showed both were `pending` (status=2), not `open` (status=0). Tab "All" filters by assignment only and defaults to status=`open`. With 181 pending conversations vs 32 open across the account, managers were missing 85% of active workload — including conversations assigned to other agents that they need to monitor.
+
+**Root cause:** Chatwoot's tab "All" applies a default status filter of `open`, hiding all `pending` conversations regardless of inbox membership or assignment.
+
+**Solution:** Created a per-user `custom_filter` named `📋 كل النشطة (Open + Pending)` for the 6 manager-level users. Filter combines `status IN (open, pending)` with no other constraints, so it respects each user's inbox membership exactly the same way "All" does — but includes pending.
+
+**Filters created (filter_type=0, account_id=1):**
+| ID | User | Email | Role |
+|---|---|---|---|
+| 50 | rami | rami@qaydao.com | admin |
+| 51 | QAYDAO Admin | admin@qaydao.com | admin |
+| 52 | مشرف عام | supervisor@qaydao.com | admin |
+| 53 | maali | maali@qaydao.com | agent (manager) |
+| 54 | Fai | fay@qaydao.com | agent (manager) |
+| 55 | فريق QAYDAO | support@qaydao.com | admin |
+
+**Query JSON (identical for all 6):**
+```json
+{"payload":[{"values":["open","pending"],"attribute_key":"status","query_operator":null,"attribute_model":"standard","filter_operator":"equal_to"}]}
+```
+
+**Verification:** All 6 users see 213 conversations through the view (32 open + 181 pending), matching the inbox-membership-filtered count exactly. No container restart needed — custom_filters are read live by the frontend via REST API.
+
+**Backup:** `backups/20260505/custom_filters_pre_view_*.sql.gz`
+
+**To add for a new manager later:**
+```sql
+INSERT INTO custom_filters (name, filter_type, query, account_id, user_id, created_at, updated_at)
+SELECT '📋 كل النشطة (Open + Pending)', 0,
+  '{"payload":[{"values":["open","pending"],"attribute_key":"status","query_operator":null,"attribute_model":"standard","filter_operator":"equal_to"}]}'::jsonb,
+  1, u.id, NOW(), NOW()
+FROM users u WHERE u.email = '<new-manager-email>';
+```
+
+### 2026-05-05 (later) — Multi-status filter patch (`status=open,pending`)
+**Problem reported (continued):** After creating the Custom View `📋 كل النشطة`, رامي wanted the default `الكل` tab to natively show open+pending without needing a separate Folder click.
+
+**Constraint discovered:** Chatwoot's `ConversationFinder#filter_by_status` only accepts a single status value (`open`, `pending`, `resolved`, `snoozed`, or `all`). It does not support multi-status. The `all` value bypasses status filtering entirely → also includes 365 resolved + 5 snoozed (584 total) — too noisy for managers.
+
+**Solution: backend patch + per-user `ui_settings` update**
+
+#### 1. Patch file: `patches/finders/conversation_finder.rb`
+Modified `filter_by_status` to accept comma-separated status values:
+```ruby
+def filter_by_status
+  return if params[:status] == 'all'
+  status_param = params[:status] || DEFAULT_STATUS
+  if status_param.is_a?(String) && status_param.include?(',')
+    statuses = status_param.split(',').map(&:strip).reject(&:blank?)
+    @conversations = @conversations.where(status: statuses)
+  else
+    @conversations = @conversations.where(status: status_param)
+  end
+end
+```
+- 100% backwards-compatible: single status (`open`, `pending`, etc.) still works exactly as before.
+- New behavior: `status=open,pending` → `WHERE status IN ('open','pending')`.
+
+#### 2. docker-compose.yml mounts (added to BOTH `chatwoot-web` and `chatwoot-sidekiq`)
+```yaml
+- ./patches/finders/conversation_finder.rb:/app/app/finders/conversation_finder.rb:ro
+```
+
+#### 3. Per-user UI default (the 6 managers)
+```sql
+UPDATE users
+SET ui_settings = jsonb_set(
+  COALESCE(ui_settings, '{}'::jsonb),
+  '{conversations_filter_by}',
+  COALESCE(ui_settings->'conversations_filter_by', '{}'::jsonb) || '{"status": "open,pending"}'::jsonb,
+  true
+)
+WHERE email IN ('rami@qaydao.com','admin@qaydao.com','support@qaydao.com',
+                'fay@qaydao.com','supervisor@qaydao.com','maali@qaydao.com');
+```
+
+**Verification (all passed):**
+- Ruby syntax check: ✅ `ruby -c` on patched file = `Syntax OK`
+- Rails console: `open=32`, `open,pending=213`, `open, pending (whitespace)=213`, `pending=181`, `all=583` ✅
+- Live HTTPS API (rami's token): `open=33`, `open,pending=214`, `pending=181`, `all=584` ✅ (small drift from real-time traffic, expected)
+- All 6 users verified to have `ui_settings.conversations_filter_by.status = "open,pending"` in DB.
+- `fay@qaydao.com` (had complex pre-existing ui_settings) preserved all other settings — only status updated.
+
+**Known UX caveats:**
+- The status dropdown in `ConversationBasicFilter.vue` lists 5 options (open/pending/resolved/snoozed/all). The value `open,pending` is not in that list, so the dropdown's "selected" indicator may not visually highlight any option. Functionality is unaffected.
+- If a manager clicks any other status from the dropdown (e.g. `open`), the frontend writes that single value back to `ui_settings`, **overwriting** the `open,pending` default. To restore: re-run the UPDATE SQL above (or that user can use the `📋 كل النشطة` Folder as fallback).
+- This patch must be re-applied on every Chatwoot upgrade. The bind-mounted file at `patches/finders/conversation_finder.rb` is the source of truth.
+
+**Backups:** `backups/20260505/conversation_finder_original_*.rb` + `docker-compose.yml.bak.*` + `users_pre_patch_*.sql.gz`
+
+**Rollback procedure:**
+```bash
+# 1. Remove bind-mount lines from docker-compose.yml (delete the 2 conversation_finder.rb lines)
+# 2. Restore ui_settings (clears the override; users go back to status='open' default)
+docker exec chatwoot_postgres psql -U chatwoot_user -d chatwoot_production -c "
+UPDATE users SET ui_settings = ui_settings #- '{conversations_filter_by,status}'
+WHERE email IN ('rami@qaydao.com','admin@qaydao.com','support@qaydao.com',
+                'fay@qaydao.com','supervisor@qaydao.com','maali@qaydao.com');"
+# 3. Recreate containers
+cd /root/chat-qaydao && docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
+```

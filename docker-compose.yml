@@ -45,6 +45,7 @@ services:
       - chatwoot-storage:/app/storage
       # QAYDAO patch: preserve quoted context for messages from outside Chatwoot (e.g. Whatomate)
       - ./patches/services/messages/in_reply_to_message_builder.rb:/app/app/services/messages/in_reply_to_message_builder.rb:ro
+      - ./patches/finders/conversation_finder.rb:/app/app/finders/conversation_finder.rb:ro
 
   chatwoot-sidekiq:
     image: chatwoot/chatwoot:v4.13.0
@@ -66,6 +67,7 @@ services:
       - chatwoot-storage:/app/storage
       # QAYDAO patch: same as chatwoot-web
       - ./patches/services/messages/in_reply_to_message_builder.rb:/app/app/services/messages/in_reply_to_message_builder.rb:ro
+      - ./patches/finders/conversation_finder.rb:/app/app/finders/conversation_finder.rb:ro
 
 networks:
   chatwoot-internal:
