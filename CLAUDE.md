@@ -222,3 +222,73 @@ WHERE email IN ('rami@qaydao.com','admin@qaydao.com','support@qaydao.com',
 # 3. Recreate containers
 cd /root/chat-qaydao && docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
 ```
+
+### 2026-05-05 (final) — Team-based auto-assignment (managers excluded from round-robin)
+**Problem reported:** New WhatsApp conversations were being auto-assigned to managers (e.g. Fai got Ghazala Ghyas conversation #118 on May 5, 10:07 AM Riyadh after customer reopened it). This polluted manager workload metrics and skewed daily reports. Managers should see all conversations (visibility, achieved earlier today via filter patch + custom views) but not receive auto-assignments.
+
+**Root cause analysis (code dive into ConversationFinder, AutoAssignmentHandler, AssignmentService):**
+1. Inbox 5 (and 2/3/6) has `enable_auto_assignment=true` with auto_assignment_v2_enabled=true.
+2. Round-robin uses `inbox.member_ids_with_assignment_capacity` — returns ALL online inbox_members (including managers).
+3. `auto_assignment_handler.rb` re-runs assignment when conversation status changes to `open` (i.e., on reopen).
+4. The system DOES respect `conversation.team_id` if set: `filter_agents_by_team` intersects with team members → effectively excludes managers if they're not in the team.
+
+**Solution: 3-part change**
+
+#### 1. Cleaned team 2 (الدعم الفني)
+Removed admin (id=2), Fai (id=8), maali (id=11). Kept only: شيماء (id=5) + مروة (id=6).
+```sql
+DELETE FROM team_members WHERE team_id = 2 AND user_id IN (2, 8, 11);
+```
+
+#### 2. Created 4 automation rules (one per inbox)
+All have `event_name='conversation_created'`, condition on inbox_id, action `assign_team` to team 2.
+
+| Rule ID | Inbox | Channel |
+|---------|-------|---------|
+| 2 | 2 | Email (QAYDAO بريد) |
+| 3 | 3 | WebWidget |
+| 4 | 5 | WhatsApp |
+| 5 | 6 | Instagram |
+
+Created via Rails to ensure validation. JSON structure:
+```ruby
+conditions: [{"attribute_key" => "inbox_id", "filter_operator" => "equal_to", "values" => [N], "query_operator" => nil}]
+actions: [{"action_name" => "assign_team", "action_params" => [2]}]
+```
+
+#### 3. Backfilled team_id=2 on 150 existing open+pending conversations
+Without this, reopening any of the 181 currently-open conversations would still trigger old behavior (round-robin to managers). Backfill ensures team_id persists so reopens route correctly.
+```sql
+UPDATE conversations SET team_id = 2
+WHERE account_id = 1 AND inbox_id IN (2,3,5,6) AND status IN (0,2) AND team_id IS NULL;
+-- 150 rows updated
+```
+
+**Verification (passed):**
+- `inbox.available_agents` (no team filter): 2 agents (شيماء + Fai online now)
+- After `filter_agents_by_team` (with team_id=2): **1 agent** (شيماء only — Fai filtered out, مروة offline)
+- Without team_id: 2 agents including Fai (the broken behavior — proves the fix is necessary)
+
+**Behavior going forward:**
+- New WhatsApp/Web/Email/Instagram conversation → `conversation_created` event → automation rule fires → team_id=2 set → assignment service round-robins between شيماء/مروة only.
+- Managers (rami, supervisor, admin, support, Fai, maali) remain inbox_members → can see all conversations (custom view + status patch from earlier today) → never auto-assigned.
+- Fai/managers can still MANUALLY take a conversation if needed (clicking assign-to-self).
+- Reopens of existing 150 backfilled conversations → also route to team 2.
+- The 1 conversation already on team 4 (الشحن) untouched.
+
+**Edge cases not handled (intentional):**
+- Currently-assigned-to-managers conversations: NOT reassigned. Disrupting active customer chats is worse than the metric pollution. Will resolve naturally as conversations close.
+- Team 2 (الدعم الفني) name is misleading now (it does general customer service, not just technical). Consider renaming later if confusing.
+
+**Backups:** `backups/20260505/teams_automation_pre_*.sql.gz`
+
+**Rollback:**
+```sql
+-- 1. Delete automation rules
+DELETE FROM automation_rules WHERE id IN (2,3,4,5);
+-- 2. Restore team members
+INSERT INTO team_members (team_id, user_id, created_at, updated_at) VALUES
+  (2, 2, NOW(), NOW()), (2, 8, NOW(), NOW()), (2, 11, NOW(), NOW());
+-- 3. Clear backfilled team_id (only the ones we set)
+-- WARNING: this also clears any other team_id=2 set since 2026-05-05. Use with care.
+```
