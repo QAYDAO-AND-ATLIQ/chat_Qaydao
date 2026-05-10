@@ -1,0 +1,71 @@
+name: Widget Bridge CI
+
+# Only runs when widget-bridge code changes — keeps CI fast for unrelated edits
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'widget-bridge/**'
+      - '.github/workflows/widget-bridge-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'widget-bridge/**'
+      - '.github/workflows/widget-bridge-ci.yml'
+
+defaults:
+  run:
+    working-directory: widget-bridge
+
+jobs:
+  lint:
+    name: Python lint & syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dev tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff==0.8.4 pyflakes==3.2.0
+      - name: Syntax check
+        run: |
+          python -m py_compile app/main.py app/config.py app/dedup.py \
+                                app/working_hours.py app/chatwoot_client.py \
+                                app/webhook_handler.py
+      - name: Pyflakes
+        run: pyflakes app/
+      - name: Ruff
+        run: ruff check app/ --select=E,F,W,I --line-length=110
+
+  build:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./widget-bridge/app
+          push: false
+          tags: chatwoot-widget-bridge:ci
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect committed secrets
+        run: |
+          if grep -rE 'ghp_|gho_|ghu_|ghs_|github_pat_|api_access_token=[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|EAA[A-Za-z0-9]{30,}' widget-bridge/ \
+            --exclude='*.md' --exclude='.env.example'; then
+            echo "::error::Suspected secret detected in widget-bridge/"
+            exit 1
+          fi
+          echo "✓ no secrets found in widget-bridge/"

@@ -24,6 +24,20 @@
 - صفحة تجريبية بـ Widget الشات
 - 7 سيناريوهات جاهزة للتجربة
 
+### 4. Widget Bridge (widget-bridge/) 🆕
+خدمة Python تستعيد العملاء الذين يتواصلون عبر widget الموقع **خارج أوقات العمل**.
+
+عند إنشاء محادثة في widget خارج الدوام (السبت-الخميس قبل 9ص أو بعد 12م، والجمعة كاملاً):
+1. Webhook من Chatwoot → خدمة `widget_bridge` تلتقطه
+2. تتحقق من ساعات العمل (Asia/Riyadh) + dedup 24 ساعة
+3. ترسل قالب واتساب معتمد من Meta لرقم العميل
+4. تضيف internal note للفريق ليلاحقه صباحاً
+
+**النتيجة:** صفر عملاء ضائعين خارج الدوام. كل واحد يصبح عنده ثريد واتساب دائم مع QAYDAO.
+
+📖 [التوثيق الكامل في widget-bridge/README.md](widget-bridge/README.md)
+
+
 ## الهيكل
 ```
 ├── docker-compose.yml          # Chatwoot Docker Compose
