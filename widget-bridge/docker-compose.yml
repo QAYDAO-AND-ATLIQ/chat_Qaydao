@@ -1,0 +1,28 @@
+services:
+  widget-bridge:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    image: chatwoot-widget-bridge:latest
+    container_name: widget_bridge
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - chatwoot_internal
+    expose:
+      - "8000"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  chatwoot_internal:
+    external: true
