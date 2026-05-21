@@ -19,6 +19,26 @@ const ASSISTANT_ID = 1;
 chatwootPool.on('error', err => console.error('[Chatwoot PG]', err.message));
 
 // ────────────────────────────────────────────────────────────
+//  EMBEDDING GENERATOR (OpenAI text-embedding-3-small, 1536d)
+// ────────────────────────────────────────────────────────────
+async function generateEmbedding(text) {
+  const OpenAI = require('openai');
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const r = await client.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: text,
+    encoding_format: 'float'
+  });
+  return r.data[0].embedding;
+}
+
+function vectorLiteral(arr) {
+  // pgvector accepts string literal like "[0.1,0.2,...]"
+  return '[' + arr.join(',') + ']';
+}
+
+
+// ────────────────────────────────────────────────────────────
 //  DOCUMENTS
 // ────────────────────────────────────────────────────────────
 
@@ -395,6 +415,14 @@ async function approveLearningSuggestion(id, { question, answer, reviewer }) {
         RETURNING id
       `, [sug.account_id, sug.assistant_id, finalQ, finalA, 1]);
       const faqId = faqRows[0].id;
+      
+      // Generate embedding synchronously (Rails callback doesn't fire for raw INSERT)
+      const embText = finalQ + ': ' + finalA;
+      const vec = await generateEmbedding(embText);
+      await chatwootPool.query(
+        'UPDATE captain_assistant_responses SET embedding = $1::vector WHERE id = $2',
+        [vectorLiteral(vec), faqId]
+      );
       
       // Mark suggestion as approved
       await chatwootPool.query(`
