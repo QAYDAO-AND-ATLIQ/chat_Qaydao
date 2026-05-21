@@ -622,6 +622,61 @@ app.get("/products/api/captain/replies/stats", requireAuth, async (req, res) => 
   }
 });
 
+
+// ─── Captain Learning System ───
+app.get("/products/captain/learn", requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "captain-learn.html"));
+});
+
+app.get("/products/api/captain/learn/suggestions", requireAuth, async (req, res) => {
+  try {
+    const status = req.query.status || 'pending';
+    const limit = parseInt(req.query.limit) || 50;
+    const [suggestions, stats] = await Promise.all([
+      captain.listLearningSuggestions(status, limit),
+      captain.getLearningStats()
+    ]);
+    res.json({ suggestions, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/products/api/captain/learn/suggestions/:id/context", requireAuth, async (req, res) => {
+  try {
+    const sug = await captain.getLearningSuggestion(req.params.id);
+    if (!sug) return res.status(404).json({ error: 'not found' });
+    const messages = await captain.fetchConversationContext(sug.conversation_id);
+    res.json({ suggestion: sug, messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/products/api/captain/learn/suggestions/:id/approve", requireAuth, async (req, res) => {
+  try {
+    const { question, answer } = req.body || {};
+    const result = await captain.approveLearningSuggestion(req.params.id, {
+      question, answer, reviewer: req.session.user || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/products/api/captain/learn/suggestions/:id/reject", requireAuth, async (req, res) => {
+  try {
+    const { reason } = req.body || {};
+    const result = await captain.rejectLearningSuggestion(req.params.id, {
+      reason, reviewer: req.session.user || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ─── Documents CRUD ───
 app.get("/products/api/captain/documents", requireAuth, async (req, res) => {
   try {

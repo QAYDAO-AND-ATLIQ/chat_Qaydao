@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تعليم QAYDAO AI من ردود الموظفين</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <style>
+    body { font-family: 'Cairo', sans-serif; background: #f7f8fa; }
+    .msg-customer { background: #f3f4f6; color: #1f2937; border-right: 3px solid #6b7280; }
+    .msg-captain  { background: #ede9fe; color: #5b21b6; border-right: 3px solid #8b5cf6; }
+    .msg-agent    { background: #d1fae5; color: #065f46; border-right: 3px solid #10b981; }
+    .pending { background: linear-gradient(45deg, #fef3c7 25%, transparent 25%) 0 0/8px 8px; }
+    textarea { font-family: 'Cairo', sans-serif; }
+    .tab-active { background: #2563eb; color: white; }
+  </style>
+</head>
+<body class="min-h-screen" x-data="learnApp()" x-init="init()">
+
+  <header class="bg-white border-b shadow-sm sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <a href="/products/captain" class="text-gray-500 hover:text-gray-800">← العودة</a>
+        <h1 class="text-xl font-bold text-gray-800">🎓 تعليم QAYDAO AI</h1>
+        <span class="text-xs text-gray-500">اقتراحات FAQs مستخرجة من ردود الموظفين</span>
+      </div>
+      <button @click="runExtractor()" class="bg-purple-600 hover:bg-purple-700 text-white text-sm px-4 py-2 rounded">
+        <span x-show="!extracting">🔍 استخراج اقتراحات جديدة</span>
+        <span x-show="extracting">جارٍ التحليل...</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-7xl mx-auto px-6 py-6">
+    
+    <!-- Stats -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+      <div class="bg-white rounded-lg p-4 border-2 border-yellow-300">
+        <div class="text-xs text-gray-500 mb-1">⏳ بانتظار المراجعة</div>
+        <div class="text-3xl font-bold text-yellow-600" x-text="stats.pending || 0"></div>
+        <div class="text-xs text-gray-400 mt-1">اقتراحات جاهزة للقرار</div>
+      </div>
+      <div class="bg-white rounded-lg p-4 border border-gray-200">
+        <div class="text-xs text-gray-500 mb-1">✅ تمت الموافقة</div>
+        <div class="text-3xl font-bold text-green-600" x-text="stats.approved || 0"></div>
+        <div class="text-xs text-gray-400 mt-1">أصبحت FAQs</div>
+      </div>
+      <div class="bg-white rounded-lg p-4 border border-gray-200">
+        <div class="text-xs text-gray-500 mb-1">❌ مرفوضة</div>
+        <div class="text-3xl font-bold text-gray-500" x-text="stats.rejected || 0"></div>
+        <div class="text-xs text-gray-400 mt-1">لا تستحق التعميم</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-2 mb-4">
+      <button @click="filter='pending'; load()" :class="filter==='pending'?'tab-active':'bg-white border'" class="px-4 py-2 rounded-lg text-sm font-semibold">
+        بانتظار <span x-text="stats.pending || 0" class="mx-1"></span>
+      </button>
+      <button @click="filter='approved'; load()" :class="filter==='approved'?'tab-active':'bg-white border'" class="px-4 py-2 rounded-lg text-sm font-semibold">
+        مقبولة
+      </button>
+      <button @click="filter='rejected'; load()" :class="filter==='rejected'?'tab-active':'bg-white border'" class="px-4 py-2 rounded-lg text-sm font-semibold">
+        مرفوضة
+      </button>
+    </div>
+
+    <!-- Empty state -->
+    <div x-show="suggestions.length === 0 && !loading" class="bg-white rounded-lg p-12 text-center border border-gray-200">
+      <div class="text-5xl mb-3">🎓</div>
+      <div class="text-gray-600 font-semibold mb-2">لا توجد اقتراحات في هذه القائمة</div>
+      <div class="text-sm text-gray-500" x-show="filter==='pending'">اضغط "استخراج اقتراحات جديدة" لتحليل المحادثات الحديثة</div>
+    </div>
+
+    <!-- Suggestions list -->
+    <div class="space-y-4">
+      <template x-for="s in suggestions" :key="s.id">
+        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <!-- Meta -->
+          <div class="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-600">
+            <div class="flex items-center gap-3">
+              <span>محادثة #<span x-text="s.conversation_id"></span></span>
+              <span x-show="s.agent_name">رد بواسطة: <span class="font-semibold" x-text="s.agent_name"></span></span>
+              <span class="text-gray-400" x-text="s.channel_type?.replace('Channel::','')"></span>
+            </div>
+            <button @click="loadContext(s.id)" class="text-blue-600 hover:underline">👁 عرض المحادثة الأصلية</button>
+          </div>
+
+          <!-- Original -->
+          <div class="px-4 py-3 border-b border-gray-100">
+            <div class="text-xs font-semibold text-gray-500 mb-2">المحادثة الأصلية:</div>
+            <div class="grid md:grid-cols-2 gap-3">
+              <div class="msg-customer p-3 rounded text-sm">
+                <div class="font-bold mb-1">👤 العميل:</div>
+                <div x-text="s.original_question"></div>
+              </div>
+              <div class="msg-agent p-3 rounded text-sm">
+                <div class="font-bold mb-1">👨‍💼 الموظف:</div>
+                <div class="whitespace-pre-wrap" x-text="s.original_agent_reply"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI suggestion -->
+          <div class="px-4 py-3 bg-purple-50 border-b border-purple-100">
+            <div class="text-xs font-semibold text-purple-700 mb-2">🤖 اقتراح AI لتعليم QAYDAO:</div>
+            <div class="text-xs text-purple-600 mb-2" x-text="s.ai_reasoning"></div>
+            <div class="grid md:grid-cols-2 gap-3">
+              <div>
+                <div class="text-xs font-bold text-gray-700 mb-1">السؤال (يمكن تعديله):</div>
+                <textarea x-model="s.suggested_question" rows="2" class="w-full text-sm p-2 border border-purple-200 rounded focus:ring-2 focus:ring-purple-300 focus:outline-none"></textarea>
+              </div>
+              <div>
+                <div class="text-xs font-bold text-gray-700 mb-1">الإجابة (يمكن تعديلها):</div>
+                <textarea x-model="s.suggested_answer" rows="4" class="w-full text-sm p-2 border border-purple-200 rounded focus:ring-2 focus:ring-purple-300 focus:outline-none"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="px-4 py-3 flex items-center justify-between bg-gray-50">
+            <div x-show="s.status === 'approved'" class="text-sm text-green-700">
+              ✅ مقبولة → FAQ #<span x-text="s.created_faq_id"></span>
+              <span class="text-gray-500" x-show="s.reviewed_by">— بواسطة <span x-text="s.reviewed_by"></span></span>
+            </div>
+            <div x-show="s.status === 'rejected'" class="text-sm text-gray-600">
+              ❌ مرفوضة — <span x-text="s.rejection_reason || 'بدون سبب'"></span>
+            </div>
+            <div x-show="s.status === 'pending'" class="flex gap-2 mr-auto">
+              <button @click="reject(s)" class="px-4 py-1.5 text-sm border border-red-300 text-red-700 hover:bg-red-50 rounded">
+                ❌ رفض
+              </button>
+              <button @click="approve(s)" :disabled="!s.suggested_question?.trim() || !s.suggested_answer?.trim()"
+                class="px-4 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded font-semibold">
+                ✅ موافقة + إضافة كـ FAQ
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Conversation context modal -->
+  <div x-show="contextModal.open" @click.self="contextModal.open=false"
+       class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" style="display:none">
+    <div class="bg-white rounded-lg max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+      <div class="px-4 py-3 border-b flex items-center justify-between">
+        <h3 class="font-bold">المحادثة #<span x-text="contextModal.conv_id"></span></h3>
+        <button @click="contextModal.open=false" class="text-gray-500 hover:text-gray-700 text-xl">×</button>
+      </div>
+      <div class="overflow-y-auto p-4 space-y-2">
+        <template x-for="m in contextModal.messages" :key="m.id">
+          <div class="text-sm">
+            <div class="text-xs text-gray-500 mb-1" x-text="m.sender_name + ' · ' + new Date(m.created_at).toLocaleString('ar-SA')"></div>
+            <div class="p-3 rounded whitespace-pre-wrap"
+              :class="m.sender_type === 'Contact' ? 'msg-customer' : (m.sender_type === 'Captain::Assistant' ? 'msg-captain' : 'msg-agent')"
+              x-text="m.content"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function learnApp() {
+      return {
+        suggestions: [],
+        stats: {},
+        filter: 'pending',
+        loading: false,
+        extracting: false,
+        contextModal: { open: false, conv_id: null, messages: [] },
+
+        async init() { await this.load(); },
+
+        async load() {
+          this.loading = true;
+          try {
+            const r = await fetch('/products/api/captain/learn/suggestions?status=' + this.filter).then(r => r.json());
+            this.suggestions = r.suggestions || [];
+            this.stats = r.stats || {};
+          } catch (err) {
+            alert('فشل التحميل: ' + err.message);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        async approve(s) {
+          if (!confirm('إضافة هذا السؤال والإجابة كـ FAQ لـ QAYDAO AI؟')) return;
+          try {
+            const r = await fetch(`/products/api/captain/learn/suggestions/${s.id}/approve`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ question: s.suggested_question, answer: s.suggested_answer })
+            }).then(r => r.json());
+            if (r.success) {
+              alert(`✅ تمت الإضافة كـ FAQ #${r.faq_id}\nسيظهر التأثير في Captain خلال دقيقة (بعد توليد embedding)`);
+              await this.load();
+            } else {
+              alert('فشل: ' + (r.error || 'خطأ غير معروف'));
+            }
+          } catch (err) {
+            alert('فشل: ' + err.message);
+          }
+        },
+
+        async reject(s) {
+          const reason = prompt('سبب الرفض (اختياري):', '');
+          if (reason === null) return;
+          try {
+            await fetch(`/products/api/captain/learn/suggestions/${s.id}/reject`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason })
+            });
+            await this.load();
+          } catch (err) {
+            alert('فشل: ' + err.message);
+          }
+        },
+
+        async loadContext(id) {
+          try {
+            const r = await fetch(`/products/api/captain/learn/suggestions/${id}/context`).then(r => r.json());
+            this.contextModal = {
+              open: true,
+              conv_id: r.suggestion.conversation_id,
+              messages: r.messages || []
+            };
+          } catch (err) {
+            alert('فشل التحميل: ' + err.message);
+          }
+        },
+
+        async runExtractor() {
+          if (!confirm('سيتم تحليل المحادثات الـ7 أيام الماضية باستخدام AI. قد يستغرق دقيقة.\n\nمتابعة؟')) return;
+          this.extracting = true;
+          try {
+            // No endpoint for this yet - tell user to run cron or wait
+            alert('السكربت يعمل تلقائياً يومياً عند الساعة 3 صباحاً.\n\nللتشغيل اليدوي على الخادم:\nnode /root/qaydao-products/scripts/extract_learning_suggestions.js');
+          } finally {
+            this.extracting = false;
+          }
+        }
+      };
+    }
+  </script>
+</body>
+</html>

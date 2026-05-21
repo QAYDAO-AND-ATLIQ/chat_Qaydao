@@ -350,6 +350,123 @@ async function getRepliesByChannel(since_hours = 24) {
   return rows;
 }
 
+
+// ────────────────────────────────────────────────────────────
+//  LEARNING — pending suggestions from agent-handled convs
+// ────────────────────────────────────────────────────────────
+
+async function listLearningSuggestions(status = 'pending', limit = 50) {
+  const { rows } = await chatwootPool.query(`
+    SELECT cls.*, 
+           c.status AS conv_status
+    FROM captain_learning_suggestions cls
+    LEFT JOIN conversations c ON c.id = cls.conversation_id
+    WHERE cls.status = $1
+    ORDER BY cls.created_at DESC
+    LIMIT $2
+  `, [status, limit]);
+  return rows;
+}
+
+async function getLearningSuggestion(id) {
+  const { rows } = await chatwootPool.query(
+    'SELECT * FROM captain_learning_suggestions WHERE id = $1',
+    [id]
+  );
+  return rows[0];
+}
+
+async function approveLearningSuggestion(id, { question, answer, reviewer }) {
+  return await chatwootPool.query('BEGIN').then(async () => {
+    try {
+      const sug = await getLearningSuggestion(id);
+      if (!sug) throw new Error('suggestion not found');
+      if (sug.status === 'approved') throw new Error('already approved');
+      
+      const finalQ = (question || sug.suggested_question || '').trim();
+      const finalA = (answer || sug.suggested_answer || '').trim();
+      if (!finalQ || !finalA) throw new Error('question or answer is empty');
+      
+      // Insert as FAQ
+      const { rows: faqRows } = await chatwootPool.query(`
+        INSERT INTO captain_assistant_responses
+          (account_id, assistant_id, question, answer, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+        RETURNING id
+      `, [sug.account_id, sug.assistant_id, finalQ, finalA, 1]);
+      const faqId = faqRows[0].id;
+      
+      // Mark suggestion as approved
+      await chatwootPool.query(`
+        UPDATE captain_learning_suggestions
+        SET status = 'approved',
+            suggested_question = $1,
+            suggested_answer = $2,
+            reviewed_by = $3,
+            reviewed_at = NOW(),
+            created_faq_id = $4,
+            updated_at = NOW()
+        WHERE id = $5
+      `, [finalQ, finalA, reviewer || 'admin', faqId, id]);
+      
+      await chatwootPool.query('COMMIT');
+      
+      // Trigger embedding (sync would be safer but requires Rails - we trust the FAQ embedding listener)
+      // The Captain::AssistantResponse model's after_create_commit will enqueue UpdateEmbeddingJob automatically
+      
+      return { success: true, faq_id: faqId };
+    } catch (err) {
+      await chatwootPool.query('ROLLBACK');
+      throw err;
+    }
+  });
+}
+
+async function rejectLearningSuggestion(id, { reason, reviewer }) {
+  await chatwootPool.query(`
+    UPDATE captain_learning_suggestions
+    SET status = 'rejected',
+        rejection_reason = $1,
+        reviewed_by = $2,
+        reviewed_at = NOW(),
+        updated_at = NOW()
+    WHERE id = $3 AND status = 'pending'
+  `, [reason || 'manual', reviewer || 'admin', id]);
+  return { success: true };
+}
+
+async function getLearningStats() {
+  const { rows } = await chatwootPool.query(`
+    SELECT status, COUNT(*) AS n
+    FROM captain_learning_suggestions
+    GROUP BY status
+  `);
+  const stats = { pending: 0, approved: 0, rejected: 0, edited: 0 };
+  rows.forEach(r => { stats[r.status] = parseInt(r.n); });
+  return stats;
+}
+
+async function fetchConversationContext(conversation_id) {
+  const { rows } = await chatwootPool.query(`
+    SELECT m.id, m.content, m.message_type, m.sender_type, 
+           m.created_at, 
+           CASE m.sender_type
+             WHEN 'Contact' THEN cont.name
+             WHEN 'User' THEN u.name
+             WHEN 'Captain::Assistant' THEN 'QAYDAO AI'
+             ELSE m.sender_type
+           END AS sender_name
+    FROM messages m
+    LEFT JOIN contacts cont ON cont.id = m.sender_id AND m.sender_type = 'Contact'
+    LEFT JOIN users u ON u.id = m.sender_id AND m.sender_type = 'User'
+    WHERE m.conversation_id = $1
+      AND (m.private = false OR m.private IS NULL)
+    ORDER BY m.id
+    LIMIT 50
+  `, [conversation_id]);
+  return rows;
+}
+
 module.exports = {
   // Documents
   listDocuments, getDocument, createDocument, updateDocument, deleteDocument,
@@ -361,6 +478,9 @@ module.exports = {
   getAssistant, updateAssistantInstructions,
   // Replies viewer
   listCaptainReplies, getRepliesStats, getRepliesByChannel,
+  // Learning
+  listLearningSuggestions, getLearningSuggestion, approveLearningSuggestion,
+  rejectLearningSuggestion, getLearningStats, fetchConversationContext,
   // Stats
   getStats,
   // Direct DB access
