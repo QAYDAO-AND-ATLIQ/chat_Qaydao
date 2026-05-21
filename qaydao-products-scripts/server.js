@@ -14,6 +14,7 @@ const db = require('./db-pg');
 const adapters = require('./adapters');
 const syncEngine = require('./sync-engine');
 const captain = require('./captain-manager');
+const unifiedImport = require('./unified-import');
 
 const PORT = process.env.PORT || 3601;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'qaydao2026';
@@ -295,6 +296,28 @@ app.get('/products/api/uploads', requireAuth, async (req, res) => {
 });
 
 // Upload CSV
+// ─── UNIFIED IMPORT (multi-platform fan-out) ──────────────────────────
+// Accepts CSV or XML. Pushes to master_products + sales + studio.
+// Skips deletes (never removes). Protects per-platform fields.
+app.post('/products/api/upload-unified', requireAuth, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'لم يتم تحميل أي ملف' });
+  try {
+    const fs = require('fs');
+    const buffer = fs.readFileSync(req.file.path);
+    const result = await unifiedImport.runUnifiedImport({
+      buffer,
+      filename: req.file.originalname,
+      uploadedBy: req.session?.user || 'employee'
+    });
+    // Cleanup temp file
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
+    res.json({ success: true, result });
+  } catch (err) {
+    console.error('[unified-upload]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/products/api/upload', requireAuth, upload.single('csv'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'لم يتم تحميل أي ملف' });
 
