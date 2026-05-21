@@ -22,6 +22,7 @@
 #   7. All FAQ embeddings present (regenerates missing ones)
 #   8. Automation rule #3 event = conversation_opened
 #   9. auto_resolve_duration = NULL
+#  10. captain_learning_suggestions table exists
 #
 # ============================================
 
@@ -33,7 +34,7 @@ ASSISTANT_ID = 1
 log = ->(msg) { puts "[seed_captain] #{msg}" }
 
 # ──────────────── 1. Pricing plan ────────────────
-log.call "→ 1/9 Pricing plan + cache clear"
+log.call "→ 1/10 Pricing plan + cache clear"
 pp_cfg = InstallationConfig.find_by!(name: "INSTALLATION_PRICING_PLAN")
 pp_cfg.update!(value: "enterprise", locked: false) unless pp_cfg.value == "enterprise"
 qty_cfg = InstallationConfig.find_by!(name: "INSTALLATION_PRICING_PLAN_QUANTITY")
@@ -42,7 +43,7 @@ GlobalConfig.clear_cache
 log.call "   ✓ plan=enterprise qty=100 cache=cleared"
 
 # ──────────────── 2. Feature flags ────────────────
-log.call "→ 2/9 Feature flags"
+log.call "→ 2/10 Feature flags"
 account = Account.find(ACCOUNT_ID)
 %w[captain_integration captain_integration_v2 help_center captain_tasks].each do |f|
   account.enable_features!(f) unless account.feature_enabled?(f)
@@ -50,7 +51,7 @@ end
 log.call "   ✓ captain_integration + V2 enabled"
 
 # ──────────────── 3. Assistant instruction ────────────────
-log.call "→ 3/9 Assistant instruction"
+log.call "→ 3/10 Assistant instruction"
 assistant = Captain::Assistant.find(ASSISTANT_ID)
 canonical_instruction = <<~PROMPT
   أنت QAYDAO AI - مساعد ذكي رسمي لخدمة عملاء متجر كواي داو (qaydao.com)، متجر سعودي للأثاث المنزلي والمكتبي الفاخر.
@@ -116,7 +117,7 @@ else
 end
 
 # ──────────────── 4. Custom Tools ────────────────
-log.call "→ 4/9 Custom tools"
+log.call "→ 4/10 Custom tools"
 
 search_tool = Captain::CustomTool.find_or_initialize_by(account_id: ACCOUNT_ID, slug: "search_products")
 search_tool.assign_attributes(
@@ -151,7 +152,7 @@ track_tool.save!
 log.call "   ✓ track_order tool"
 
 # ──────────────── 5. Scenarios ────────────────
-log.call "→ 5/9 Scenarios"
+log.call "→ 5/10 Scenarios"
 
 scenarios_data = [
   {
@@ -271,7 +272,7 @@ expected_ids = scenarios_data.map { |s| s[:id] }
 Captain::Scenario.where(assistant_id: ASSISTANT_ID).where.not(id: expected_ids).destroy_all
 
 # ──────────────── 6. Inbox bindings ────────────────
-log.call "→ 6/9 Captain inbox bindings"
+log.call "→ 6/10 Captain inbox bindings"
 customer_inboxes = account.inboxes.where.not(channel_type: "Channel::Api")
 customer_inboxes.each do |inbox|
   CaptainInbox.find_or_create_by(captain_assistant_id: ASSISTANT_ID, inbox_id: inbox.id)
@@ -279,7 +280,7 @@ customer_inboxes.each do |inbox|
 end
 
 # ──────────────── 7. FAQ embeddings ────────────────
-log.call "→ 7/9 FAQ embeddings"
+log.call "→ 7/10 FAQ embeddings"
 missing = Captain::AssistantResponse.where(assistant_id: ASSISTANT_ID, embedding: nil)
 if missing.any?
   log.call "   ⚙ regenerating #{missing.count} missing embeddings (background)"
@@ -291,7 +292,7 @@ else
 end
 
 # ──────────────── 8. Automation rule #3 ────────────────
-log.call "→ 8/9 Automation rule #3 event"
+log.call "→ 8/10 Automation rule #3 event"
 rule = AutomationRule.find_by(id: 3)
 if rule
   if rule.event_name != "conversation_opened"
@@ -305,12 +306,47 @@ else
 end
 
 # ──────────────── 9. Auto-resolve disabled ────────────────
-log.call "→ 9/9 Auto-resolve disabled"
+log.call "→ 9/10 Auto-resolve disabled"
 if account.auto_resolve_duration.present?
   account.update!(auto_resolve_duration: nil)
   log.call "   ✓ auto_resolve_duration set to NULL"
 else
   log.call "   = auto_resolve_duration already NULL"
+end
+
+# ──────────────── 10. Learning system table ────────────────
+log.call "→ 10/10 Learning suggestions table"
+exists = ActiveRecord::Base.connection.table_exists?("captain_learning_suggestions")
+if exists
+  log.call "   = captain_learning_suggestions table already exists"
+else
+  log.call "   ⚙ creating captain_learning_suggestions table"
+  ActiveRecord::Base.connection.execute(<<~SQL)
+    CREATE TABLE captain_learning_suggestions (
+      id BIGSERIAL PRIMARY KEY,
+      conversation_id BIGINT NOT NULL,
+      account_id BIGINT NOT NULL DEFAULT 1,
+      assistant_id BIGINT NOT NULL DEFAULT 1,
+      original_question TEXT NOT NULL,
+      original_agent_reply TEXT NOT NULL,
+      agent_name TEXT,
+      channel_type TEXT,
+      suggested_question TEXT,
+      suggested_answer TEXT,
+      ai_reasoning TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewed_by TEXT,
+      reviewed_at TIMESTAMP WITH TIME ZONE,
+      rejection_reason TEXT,
+      created_faq_id BIGINT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      UNIQUE(conversation_id, original_question)
+    );
+    CREATE INDEX idx_cls_status ON captain_learning_suggestions(status);
+    CREATE INDEX idx_cls_created ON captain_learning_suggestions(created_at DESC);
+  SQL
+  log.call "   ✓ table created"
 end
 
 puts ""
