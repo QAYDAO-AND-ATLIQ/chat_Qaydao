@@ -17,6 +17,7 @@ Runs every 5 minutes via cron. Checks 13 conditions:
  13. Pricing plan = enterprise (unlocks Captain UI)
 """
 import json
+import os
 import logging
 import socket
 import subprocess
@@ -313,6 +314,41 @@ def check_faq_embeddings() -> tuple[str, bool, str]:
     )
 
 
+
+def check_ghost_products() -> tuple[str, bool, str]:
+    """Detect ghost products: in master_products but not in studio (source-of-truth)."""
+    import subprocess
+    try:
+        # Count active products in master
+        env = {"PGPASSWORD": "qm_X9pK2vN5wQ8tR3jL7zB4yF1mH6cD0gA"}
+        master_count = subprocess.check_output(
+            ["psql", "-h", "127.0.0.1", "-U", "qaydao_master", "-d", "qaydao_master",
+             "-t", "-A", "-c",
+             "SELECT COUNT(*) FROM master_products WHERE deleted_at IS NULL AND is_active = TRUE;"],
+            text=True, timeout=8, env={**os.environ, **env}
+        ).strip()
+        # Count valid in studio
+        studio_count = subprocess.check_output(
+            ["sqlite3", "/opt/qaydao-studio/app/database/database.sqlite",
+             "SELECT COUNT(DISTINCT salla_product_id) FROM products WHERE salla_product_id IS NOT NULL AND salla_product_id != \u0027\u0027;"],
+            text=True, timeout=8
+        ).strip()
+        m = int(master_count)
+        s = int(studio_count)
+        ghosts = m - s
+        # Allow up to 5% drift (sync timing)
+        if ghosts <= max(50, int(s * 0.05)):
+            return "ghost_products", True, f"master={m} studio={s} drift={ghosts} (OK)"
+        return "ghost_products", False, (
+            f"⚠️ {ghosts} منتج شبحي في master_products (موجود في DB لكن ليس في Salla/studio).\n"
+            f"الأثر: Captain يقترح روابط منتجات ميتة → 404 للعملاء.\n"
+            f"الإصلاح: node /root/qaydao-products/scripts/cleanup_ghost_products.js"
+        )
+    except Exception as e:
+        log.warning(f"ghost_products check failed: {e}")
+        return "ghost_products", True, "skipped (check error)"
+
+
 def check_pricing_plan() -> tuple[str, bool, str]:
     """INSTALLATION_PRICING_PLAN must be 'enterprise' for Captain UI to unlock."""
     val = db_query(
@@ -395,6 +431,7 @@ def main():
         check_captain_features_enabled,
         check_captain_inbox_binding,
         check_assignment_rule_event,
+        check_ghost_products,
         check_captain_inbox_coverage,
         check_faq_embeddings,
         check_pricing_plan,
