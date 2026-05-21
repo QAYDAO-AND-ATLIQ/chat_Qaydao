@@ -7,3 +7,15 @@ redis-data/
 *.bak.*
 .claude/
 backups/
+
+# Monitoring runtime files
+monitoring/*.log
+monitoring/__pycache__/
+monitoring/active_alerts.json
+
+# Captain backup artifacts
+captain-config/backups/
+
+# Don't commit any rb scripts that might contain test data
+*.rb.bak
+test_*.rb
