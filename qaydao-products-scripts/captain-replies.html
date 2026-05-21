@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ردود QAYDAO AI — لحظياً</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <style>
+    body { font-family: 'Cairo', sans-serif; background: #f7f8fa; }
+    .channel-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .ch-WebWidget  { background: #dbeafe; color: #1e40af; }
+    .ch-Whatsapp   { background: #d1fae5; color: #065f46; }
+    .ch-Email      { background: #fef3c7; color: #92400e; }
+    .ch-Instagram  { background: #fce7f3; color: #9d174d; }
+    .reply-card { transition: transform .1s, box-shadow .15s; }
+    .reply-card:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,.08); }
+    .pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; margin-left: 6px; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .scrollbar::-webkit-scrollbar { width: 6px; }
+    .scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen" x-data="repliesApp()" x-init="init()">
+
+  <!-- Header -->
+  <header class="bg-white border-b shadow-sm sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <a href="/products/captain" class="text-gray-500 hover:text-gray-800">← العودة لإدارة Captain</a>
+        <h1 class="text-xl font-bold text-gray-800">🤖 ردود QAYDAO AI</h1>
+        <span class="text-xs text-gray-500">
+          <span class="pulse-dot"></span>
+          مباشر — يحدّث كل <span x-text="refreshSec"></span>ث
+        </span>
+      </div>
+      <div class="flex items-center gap-3">
+        <select x-model="filters.since_hours" @change="loadAll()" class="border rounded px-3 py-1 text-sm">
+          <option value="1">آخر ساعة</option>
+          <option value="6">آخر 6 ساعات</option>
+          <option value="24">آخر 24 ساعة</option>
+          <option value="72">آخر 3 أيام</option>
+          <option value="168">آخر أسبوع</option>
+        </select>
+        <select x-model="filters.channel" @change="loadAll()" class="border rounded px-3 py-1 text-sm">
+          <option value="all">كل القنوات</option>
+          <option value="Channel::WebWidget">شات الموقع</option>
+          <option value="Channel::Whatsapp">واتساب</option>
+          <option value="Channel::Email">بريد</option>
+          <option value="Channel::Instagram">انستغرام</option>
+        </select>
+        <button @click="loadAll(); flash()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded text-sm">
+          <span x-show="!loading">🔄 تحديث</span>
+          <span x-show="loading">جارٍ...</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Stats Cards -->
+  <div class="max-w-7xl mx-auto px-6 py-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-lg p-4 border border-gray-200">
+        <div class="text-xs text-gray-500 mb-1">إجمالي الردود</div>
+        <div class="text-3xl font-bold text-blue-600" x-text="stats.total_replies || 0"></div>
+        <div class="text-xs text-gray-400 mt-1" x-text="`في آخر ${filters.since_hours} ساعة`"></div>
+      </div>
+      <div class="bg-white rounded-lg p-4 border border-gray-200">
+        <div class="text-xs text-gray-500 mb-1">محادثات تم خدمتها</div>
+        <div class="text-3xl font-bold text-green-600" x-text="stats.conversations_touched || 0"></div>
+        <div class="text-xs text-gray-400 mt-1">عملاء مختلفين</div>
+      </div>
+      <div class="bg-white rounded-lg p-4 border border-gray-200">
+        <div class="text-xs text-gray-500 mb-1">تحويل لموظف</div>
+        <div class="text-3xl font-bold text-orange-600" x-text="stats.handoffs || 0"></div>
+        <div class="text-xs text-gray-400 mt-1">
+          <span x-text="stats.total_replies > 0 ? Math.round((stats.handoffs / stats.total_replies) * 100) + '%' : '—'"></span>
+          من الردود
+        </div>
+      </div>
+      <div class="bg-white rounded-lg p-4 border border-gray-200">
+        <div class="text-xs text-gray-500 mb-1">آخر ساعة</div>
+        <div class="text-3xl font-bold text-purple-600" x-text="stats.last_hour || 0"></div>
+        <div class="text-xs text-gray-400 mt-1">ردود حديثة</div>
+      </div>
+    </div>
+
+    <!-- Channels breakdown -->
+    <div class="bg-white rounded-lg p-4 border border-gray-200 mb-6">
+      <div class="text-sm font-semibold text-gray-700 mb-3">التوزيع على القنوات</div>
+      <div class="flex flex-wrap gap-3">
+        <template x-for="ch in channels" :key="ch.channel_type">
+          <div class="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded">
+            <span class="channel-badge" :class="'ch-' + ch.channel_type.replace('Channel::','')" x-text="channelLabel(ch.channel_type)"></span>
+            <span class="font-bold text-gray-800" x-text="ch.replies"></span>
+            <span class="text-xs text-gray-500">رد</span>
+          </div>
+        </template>
+        <div x-show="channels.length === 0" class="text-sm text-gray-400">لا توجد ردود في هذه الفترة</div>
+      </div>
+    </div>
+
+    <!-- Replies List -->
+    <div class="space-y-3">
+      <div x-show="replies.length === 0 && !loading" class="bg-white rounded-lg p-12 text-center border border-gray-200">
+        <div class="text-5xl mb-3">🤖</div>
+        <div class="text-gray-500">لا توجد ردود في هذه الفترة</div>
+      </div>
+
+      <template x-for="r in replies" :key="r.captain_msg_id">
+        <div class="reply-card bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <!-- Meta header -->
+          <div class="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs">
+            <div class="flex items-center gap-3">
+              <span class="channel-badge" :class="'ch-' + r.channel_type.replace('Channel::','')" x-text="channelLabel(r.channel_type)"></span>
+              <span class="text-gray-600">
+                <span x-text="r.customer_name || 'عميل'"></span>
+                <span x-show="r.customer_phone" class="text-gray-400" x-text="' · ' + r.customer_phone"></span>
+              </span>
+              <a :href="'https://chat.qaydao.com/app/accounts/1/conversations/' + r.conversation_id"
+                 target="_blank" class="text-blue-600 hover:underline">
+                محادثة #<span x-text="r.conversation_id"></span> ↗
+              </a>
+            </div>
+            <div class="flex items-center gap-3 text-gray-500">
+              <span x-text="formatTime(r.reply_at)"></span>
+              <span class="px-2 py-0.5 rounded" :class="statusClass(r.conv_status)" x-text="statusLabel(r.conv_status)"></span>
+            </div>
+          </div>
+
+          <!-- Customer question -->
+          <div x-show="r.customer_question" class="px-4 py-3 bg-blue-50 border-b border-blue-100">
+            <div class="text-xs text-blue-700 font-semibold mb-1">👤 العميل سأل</div>
+            <div class="text-sm text-gray-800" x-text="r.customer_question"></div>
+          </div>
+
+          <!-- Captain reply -->
+          <div class="px-4 py-3">
+            <div class="text-xs text-purple-700 font-semibold mb-1">🤖 QAYDAO AI ردّ</div>
+            <div class="text-sm text-gray-800 whitespace-pre-wrap" x-text="r.captain_reply"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <script>
+    function repliesApp() {
+      return {
+        replies: [],
+        stats: {},
+        channels: [],
+        loading: false,
+        refreshSec: 30,
+        timer: null,
+        filters: { since_hours: 24, channel: 'all' },
+
+        async init() {
+          await this.loadAll();
+          this.timer = setInterval(() => this.loadAll(true), this.refreshSec * 1000);
+        },
+
+        async loadAll(silent = false) {
+          if (!silent) this.loading = true;
+          try {
+            const q = new URLSearchParams({
+              limit: 100,
+              channel: this.filters.channel,
+              since_hours: this.filters.since_hours
+            });
+            const [rRes, sRes] = await Promise.all([
+              fetch('/products/api/captain/replies?' + q.toString()).then(r => r.json()),
+              fetch('/products/api/captain/replies/stats?since_hours=' + this.filters.since_hours).then(r => r.json())
+            ]);
+            this.replies = rRes.replies || [];
+            this.stats = sRes.overall || {};
+            this.channels = sRes.by_channel || [];
+          } catch (err) {
+            console.error('load error:', err);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        flash() {
+          const btn = document.querySelector('button.bg-blue-600');
+          if (btn) {
+            btn.classList.add('ring-2', 'ring-blue-300');
+            setTimeout(() => btn.classList.remove('ring-2', 'ring-blue-300'), 400);
+          }
+        },
+
+        formatTime(ts) {
+          if (!ts) return '';
+          const d = new Date(ts.replace(' ', 'T') + (ts.includes('Z') ? '' : 'Z'));
+          const now = new Date();
+          const diff = (now - d) / 1000;
+          if (diff < 60) return 'الآن';
+          if (diff < 3600) return Math.floor(diff / 60) + ' دقيقة';
+          if (diff < 86400) return Math.floor(diff / 3600) + ' ساعة';
+          return d.toLocaleString('ar-SA', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+        },
+
+        channelLabel(ct) {
+          const map = {
+            'Channel::WebWidget': 'شات الموقع',
+            'Channel::Whatsapp': 'واتساب',
+            'Channel::Email': 'بريد',
+            'Channel::Instagram': 'انستغرام',
+            'Channel::Api': 'API'
+          };
+          return map[ct] || ct;
+        },
+
+        statusLabel(s) {
+          const map = { open: 'مفتوحة', pending: 'معلقة', resolved: 'محلولة', snoozed: 'مؤجلة' };
+          return map[s] || s;
+        },
+
+        statusClass(s) {
+          if (s === 'resolved') return 'bg-green-100 text-green-700';
+          if (s === 'pending') return 'bg-yellow-100 text-yellow-700';
+          if (s === 'open') return 'bg-blue-100 text-blue-700';
+          return 'bg-gray-100 text-gray-700';
+        }
+      };
+    }
+  </script>
+</body>
+</html>
