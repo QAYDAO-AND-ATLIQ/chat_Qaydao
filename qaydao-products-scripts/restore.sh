@@ -5,6 +5,7 @@
 # Use this if any file is accidentally deleted or corrupted.
 #
 # Safe to run anytime. Idempotent. Backs up current state before overwriting.
+# NOTE: service is managed by pm2 (process name: qaydao-products).
 #
 # Usage:
 #   /root/chat-qaydao/qaydao-products-scripts/restore.sh
@@ -12,8 +13,7 @@
 # What gets restored:
 #   - server.js (main Node app)
 #   - public/index.html (main UI)
-#   - public/captain-learn.html
-#   - public/captain-replies.html
+#   - public/captain.html, captain-learn.html, captain-replies.html
 #   - captain-manager.js
 #   - scripts/cleanup_ghost_products.js
 #   - scripts/extract_learning_suggestions.js
@@ -65,12 +65,14 @@ mkdir -p "$DST/public" "$DST/scripts" "$DST/unified-import/parsers" "$DST/unifie
 
 # Public
 [ -f "$SRC/index.html" ]              && cp "$SRC/index.html" "$DST/public/index.html"              && echo "  ✓ public/index.html"
+[ -f "$SRC/captain.html" ]            && cp "$SRC/captain.html" "$DST/public/captain.html"            && echo "  ✓ public/captain.html"
 [ -f "$SRC/captain-replies.html" ]    && cp "$SRC/captain-replies.html" "$DST/public/captain-replies.html" && echo "  ✓ public/captain-replies.html"
 [ -f "$SRC/captain-learn.html" ]      && cp "$SRC/captain-learn.html" "$DST/public/captain-learn.html"     && echo "  ✓ public/captain-learn.html"
 
 # Scripts
 [ -f "$SRC/cleanup_ghost_products.js" ]       && cp "$SRC/cleanup_ghost_products.js" "$DST/scripts/"       && echo "  ✓ scripts/cleanup_ghost_products.js"
 [ -f "$SRC/extract_learning_suggestions.js" ] && cp "$SRC/extract_learning_suggestions.js" "$DST/scripts/" && echo "  ✓ scripts/extract_learning_suggestions.js"
+[ -f "$SRC/fix_missing_embeddings.js" ]       && cp "$SRC/fix_missing_embeddings.js" "$DST/scripts/"       && echo "  ✓ scripts/fix_missing_embeddings.js"
 
 # Unified import system
 for f in index.js parsers/csv.js parsers/xml.js \
@@ -87,19 +89,25 @@ cd "$DST"
 npm install --silent 2>&1 | tail -2 || echo "  ⚠ npm install had warnings (usually safe)"
 
 echo ""
-echo "🔄 Restarting service..."
-pkill -f "node $DST/server.js" 2>/dev/null || true
-sleep 2
+echo "🔄 Restarting service (via pm2)..."
 cd "$DST"
 mkdir -p logs
-nohup node server.js > logs/server.log 2>&1 & disown
-sleep 3
+# qaydao-products is managed by pm2 — use pm2, NOT nohup (avoids port conflicts)
+if pm2 describe qaydao-products >/dev/null 2>&1; then
+  pm2 restart qaydao-products >/dev/null 2>&1
+  echo "  ✓ pm2 restart qaydao-products"
+else
+  # Fallback: register with pm2 if not yet known
+  pm2 start server.js --name qaydao-products >/dev/null 2>&1
+  echo "  ✓ pm2 start qaydao-products (new registration)"
+fi
+sleep 4
 
 if ss -tlnp 2>/dev/null | grep -q ":3601"; then
   echo "✅ Service running on 127.0.0.1:3601"
 else
-  echo "❌ Service NOT running — check logs/server.log"
-  tail -20 logs/server.log
+  echo "❌ Service NOT running — check: pm2 logs qaydao-products"
+  pm2 logs qaydao-products --lines 20 --nostream 2>&1 | tail -20
   exit 1
 fi
 
