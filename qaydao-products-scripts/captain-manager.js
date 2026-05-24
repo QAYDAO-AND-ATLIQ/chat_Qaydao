@@ -287,6 +287,9 @@ async function listCaptainReplies({ limit = 50, channel = null, since_hours = 24
       FROM messages m
       WHERE m.sender_type = 'Captain::Assistant'
         AND m.created_at > NOW() - ($2 || ' hours')::interval
+        AND (m.private = false OR m.private IS NULL)
+        AND m.content NOT LIKE 'Auto-handoff:%'
+        AND LENGTH(TRIM(m.content)) > 0
         AND EXISTS (
           SELECT 1 FROM captain_inboxes ci
           WHERE ci.inbox_id = m.inbox_id AND ci.captain_assistant_id = $1
@@ -315,7 +318,13 @@ async function listCaptainReplies({ limit = 50, channel = null, since_hours = 24
       lcm.customer_question,
       cm.captain_reply,
       cm.content_attributes,
-      c.status AS conv_status
+      c.status AS conv_status,
+      (cm.captain_reply ILIKE '%unfortunately%'
+        OR cm.captain_reply ILIKE '% the customer %'
+        OR cm.captain_reply ILIKE '%I apologize%'
+        OR cm.captain_reply ILIKE '%I cannot%'
+        OR cm.captain_reply ILIKE '%here are some%') AS flag_english,
+      (cm.captain_reply LIKE '%![%') AS flag_broken_md
     FROM captain_msgs cm
     JOIN inboxes i ON i.id = cm.inbox_id
     JOIN conversations c ON c.id = cm.conversation_id
@@ -495,6 +504,116 @@ async function fetchConversationContext(conversation_id) {
   return rows;
 }
 
+
+// ────────────────────────────────────────────────────────────
+//  REPLY CONTROL — full employee control over Captain replies
+// ────────────────────────────────────────────────────────────
+
+// Get a single reply with full conversation context + the handoff reason
+async function getReplyDetail(msgId) {
+  const { rows: msgRows } = await chatwootPool.query(`
+    SELECT m.id, m.conversation_id, m.content, m.inbox_id,
+           m.created_at AT TIME ZONE 'Asia/Riyadh' AS created_at,
+           i.channel_type, i.name AS inbox_name,
+           cont.name AS customer_name, cont.phone_number
+    FROM messages m
+    JOIN inboxes i ON i.id = m.inbox_id
+    JOIN conversations c ON c.id = m.conversation_id
+    LEFT JOIN contacts cont ON cont.id = c.contact_id
+    WHERE m.id = $1
+  `, [msgId]);
+  if (!msgRows[0]) throw new Error('reply not found');
+  const reply = msgRows[0];
+
+  // The customer question right before this reply
+  const { rows: qRows } = await chatwootPool.query(`
+    SELECT content FROM messages
+    WHERE conversation_id = $1 AND message_type = 0 AND id < $2
+    ORDER BY id DESC LIMIT 1
+  `, [reply.conversation_id, msgId]);
+  reply.customer_question = qRows[0]?.content || null;
+
+  // Full conversation thread (visible messages only)
+  const { rows: thread } = await chatwootPool.query(`
+    SELECT m.id, m.content, m.message_type, m.sender_type, m.private,
+           m.created_at AT TIME ZONE 'Asia/Riyadh' AS created_at,
+           CASE m.sender_type
+             WHEN 'Contact' THEN cont.name
+             WHEN 'User' THEN u.name
+             WHEN 'Captain::Assistant' THEN 'QAYDAO AI'
+             ELSE m.sender_type
+           END AS sender_name
+    FROM messages m
+    LEFT JOIN contacts cont ON cont.id = m.sender_id AND m.sender_type = 'Contact'
+    LEFT JOIN users u ON u.id = m.sender_id AND m.sender_type = 'User'
+    WHERE m.conversation_id = $1
+    ORDER BY m.id
+    LIMIT 80
+  `, [reply.conversation_id]);
+  reply.thread = thread;
+
+  return reply;
+}
+
+// "Teach": take a customer question + the correct answer, add it as a FAQ
+// so Captain answers correctly next time. Generates embedding synchronously.
+async function teachFromReply({ question, answer, reviewer, source_msg_id }) {
+  const finalQ = (question || '').trim();
+  const finalA = (answer || '').trim();
+  if (!finalQ || !finalA) throw new Error('question and answer are required');
+
+  await chatwootPool.query('BEGIN');
+  try {
+    const { rows } = await chatwootPool.query(`
+      INSERT INTO captain_assistant_responses
+        (account_id, assistant_id, question, answer, status, edited, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, 1, TRUE, NOW(), NOW())
+      RETURNING id
+    `, [ACCOUNT_ID, ASSISTANT_ID, finalQ, finalA]);
+    const faqId = rows[0].id;
+
+    // Embedding (raw INSERT bypasses Rails callback)
+    const vec = await generateEmbedding(finalQ + ': ' + finalA);
+    await chatwootPool.query(
+      'UPDATE captain_assistant_responses SET embedding = $1::vector WHERE id = $2',
+      [vectorLiteral(vec), faqId]
+    );
+
+    // Log into learning_suggestions as approved (audit trail)
+    if (source_msg_id) {
+      await chatwootPool.query(`
+        INSERT INTO captain_learning_suggestions
+          (conversation_id, account_id, assistant_id, original_question, original_agent_reply,
+           suggested_question, suggested_answer, ai_reasoning, status, reviewed_by, reviewed_at, created_faq_id)
+        SELECT m.conversation_id, $1, $2, $3, m.content, $3, $4,
+               'تصحيح يدوي من لوحة الردود', 'approved', $5, NOW(), $6
+        FROM messages m WHERE m.id = $7
+        ON CONFLICT (conversation_id, original_question) DO NOTHING
+      `, [ACCOUNT_ID, ASSISTANT_ID, finalQ, finalA, reviewer || 'admin', faqId, source_msg_id]);
+    }
+
+    await chatwootPool.query('COMMIT');
+    return { success: true, faq_id: faqId };
+  } catch (err) {
+    await chatwootPool.query('ROLLBACK');
+    throw err;
+  }
+}
+
+// Find which FAQ (if any) most likely produced a given reply — for editing at source
+async function findRelatedFAQ(replyText) {
+  // Simple heuristic: find FAQ whose answer shares the most words with reply
+  const { rows } = await chatwootPool.query(`
+    SELECT id, question, answer,
+           similarity(answer, $1) AS sim
+    FROM captain_assistant_responses
+    WHERE assistant_id = $2
+    ORDER BY sim DESC
+    LIMIT 3
+  `, [replyText.slice(0, 500), ASSISTANT_ID]).catch(() => ({ rows: [] }));
+  return rows;
+}
+
 module.exports = {
   // Documents
   listDocuments, getDocument, createDocument, updateDocument, deleteDocument,
@@ -506,6 +625,8 @@ module.exports = {
   getAssistant, updateAssistantInstructions,
   // Replies viewer
   listCaptainReplies, getRepliesStats, getRepliesByChannel,
+  // Reply control
+  getReplyDetail, teachFromReply, findRelatedFAQ,
   // Learning
   listLearningSuggestions, getLearningSuggestion, approveLearningSuggestion,
   rejectLearningSuggestion, getLearningStats, fetchConversationContext,

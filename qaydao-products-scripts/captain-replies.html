@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ردود QAYDAO AI — لحظياً</title>
+  <title>ردود QAYDAO AI — لحظياً + تحكم شامل</title>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
@@ -18,26 +18,28 @@
     .reply-card:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,.08); }
     .pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; margin-left: 6px; animation: pulse 1.5s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-    .scrollbar::-webkit-scrollbar { width: 6px; }
-    .scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .flagged-english { border-right: 4px solid #ef4444; }
+    .flagged-md { border-right: 4px solid #f59e0b; }
+    .msg-customer { background: #f3f4f6; border-right: 3px solid #6b7280; }
+    .msg-captain  { background: #ede9fe; border-right: 3px solid #8b5cf6; }
+    .msg-agent    { background: #d1fae5; border-right: 3px solid #10b981; }
+    textarea { font-family: 'Cairo', sans-serif; }
   </style>
 </head>
 <body class="min-h-screen" x-data="repliesApp()" x-init="init()">
 
-  <!-- Header -->
   <header class="bg-white border-b shadow-sm sticky top-0 z-10">
     <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-4">
-        <a href="/products/captain" class="text-gray-500 hover:text-gray-800">← العودة لإدارة Captain</a>
+        <a href="/products/captain" class="text-gray-500 hover:text-gray-800">← العودة</a>
         <h1 class="text-xl font-bold text-gray-800">🤖 ردود QAYDAO AI</h1>
-        <span class="text-xs text-gray-500">
-          <span class="pulse-dot"></span>
-          مباشر — يحدّث كل <span x-text="refreshSec"></span>ث
-        </span>
+        <span class="text-xs text-gray-500"><span class="pulse-dot"></span>مباشر — كل <span x-text="refreshSec"></span>ث</span>
       </div>
       <div class="flex items-center gap-3">
+        <label class="text-xs flex items-center gap-1 cursor-pointer">
+          <input type="checkbox" x-model="onlyFlagged" @change="loadAll()"> عرض المشاكل فقط
+        </label>
         <select x-model="filters.since_hours" @change="loadAll()" class="border rounded px-3 py-1 text-sm">
-          <option value="1">آخر ساعة</option>
           <option value="6">آخر 6 ساعات</option>
           <option value="24">آخر 24 ساعة</option>
           <option value="72">آخر 3 أيام</option>
@@ -50,180 +52,186 @@
           <option value="Channel::Email">بريد</option>
           <option value="Channel::Instagram">انستغرام</option>
         </select>
-        <button @click="loadAll(); flash()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded text-sm">
-          <span x-show="!loading">🔄 تحديث</span>
-          <span x-show="loading">جارٍ...</span>
+        <button @click="loadAll()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded text-sm">
+          <span x-show="!loading">🔄</span><span x-show="loading">...</span>
         </button>
       </div>
     </div>
   </header>
 
-  <!-- Stats Cards -->
   <div class="max-w-7xl mx-auto px-6 py-6">
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white rounded-lg p-4 border border-gray-200">
-        <div class="text-xs text-gray-500 mb-1">إجمالي الردود</div>
-        <div class="text-3xl font-bold text-blue-600" x-text="stats.total_replies || 0"></div>
-        <div class="text-xs text-gray-400 mt-1" x-text="`في آخر ${filters.since_hours} ساعة`"></div>
-      </div>
-      <div class="bg-white rounded-lg p-4 border border-gray-200">
-        <div class="text-xs text-gray-500 mb-1">محادثات تم خدمتها</div>
-        <div class="text-3xl font-bold text-green-600" x-text="stats.conversations_touched || 0"></div>
-        <div class="text-xs text-gray-400 mt-1">عملاء مختلفين</div>
-      </div>
-      <div class="bg-white rounded-lg p-4 border border-gray-200">
-        <div class="text-xs text-gray-500 mb-1">تحويل لموظف</div>
-        <div class="text-3xl font-bold text-orange-600" x-text="stats.handoffs || 0"></div>
-        <div class="text-xs text-gray-400 mt-1">
-          <span x-text="stats.total_replies > 0 ? Math.round((stats.handoffs / stats.total_replies) * 100) + '%' : '—'"></span>
-          من الردود
-        </div>
-      </div>
-      <div class="bg-white rounded-lg p-4 border border-gray-200">
-        <div class="text-xs text-gray-500 mb-1">آخر ساعة</div>
-        <div class="text-3xl font-bold text-purple-600" x-text="stats.last_hour || 0"></div>
-        <div class="text-xs text-gray-400 mt-1">ردود حديثة</div>
-      </div>
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div class="bg-white rounded-lg p-3 border"><div class="text-xs text-gray-500">إجمالي الردود</div><div class="text-2xl font-bold text-blue-600" x-text="stats.total_replies||0"></div></div>
+      <div class="bg-white rounded-lg p-3 border"><div class="text-xs text-gray-500">محادثات</div><div class="text-2xl font-bold text-green-600" x-text="stats.conversations_touched||0"></div></div>
+      <div class="bg-white rounded-lg p-3 border"><div class="text-xs text-gray-500">تحويلات</div><div class="text-2xl font-bold text-orange-600" x-text="stats.handoffs||0"></div></div>
+      <div class="bg-white rounded-lg p-3 border"><div class="text-xs text-gray-500">آخر ساعة</div><div class="text-2xl font-bold text-purple-600" x-text="stats.last_hour||0"></div></div>
+      <div class="bg-white rounded-lg p-3 border border-red-200"><div class="text-xs text-gray-500">⚠️ ردود فيها مشاكل</div><div class="text-2xl font-bold text-red-600" x-text="flaggedCount"></div></div>
     </div>
 
-    <!-- Channels breakdown -->
-    <div class="bg-white rounded-lg p-4 border border-gray-200 mb-6">
-      <div class="text-sm font-semibold text-gray-700 mb-3">التوزيع على القنوات</div>
-      <div class="flex flex-wrap gap-3">
-        <template x-for="ch in channels" :key="ch.channel_type">
-          <div class="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded">
-            <span class="channel-badge" :class="'ch-' + ch.channel_type.replace('Channel::','')" x-text="channelLabel(ch.channel_type)"></span>
-            <span class="font-bold text-gray-800" x-text="ch.replies"></span>
-            <span class="text-xs text-gray-500">رد</span>
-          </div>
-        </template>
-        <div x-show="channels.length === 0" class="text-sm text-gray-400">لا توجد ردود في هذه الفترة</div>
-      </div>
+    <div x-show="replies.length === 0 && !loading" class="bg-white rounded-lg p-12 text-center border">
+      <div class="text-5xl mb-3">🤖</div>
+      <div class="text-gray-500" x-text="onlyFlagged ? 'لا توجد ردود فيها مشاكل 🎉' : 'لا توجد ردود في هذه الفترة'"></div>
     </div>
 
-    <!-- Replies List -->
     <div class="space-y-3">
-      <div x-show="replies.length === 0 && !loading" class="bg-white rounded-lg p-12 text-center border border-gray-200">
-        <div class="text-5xl mb-3">🤖</div>
-        <div class="text-gray-500">لا توجد ردود في هذه الفترة</div>
-      </div>
-
       <template x-for="r in replies" :key="r.captain_msg_id">
-        <div class="reply-card bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <!-- Meta header -->
-          <div class="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs">
+        <div class="reply-card bg-white rounded-lg border overflow-hidden"
+             :class="r.flag_english ? 'flagged-english' : (r.flag_broken_md ? 'flagged-md' : '')">
+          <div class="flex items-center justify-between px-4 py-2 bg-gray-50 border-b text-xs">
             <div class="flex items-center gap-3">
-              <span class="channel-badge" :class="'ch-' + r.channel_type.replace('Channel::','')" x-text="channelLabel(r.channel_type)"></span>
-              <span class="text-gray-600">
-                <span x-text="r.customer_name || 'عميل'"></span>
-                <span x-show="r.customer_phone" class="text-gray-400" x-text="' · ' + r.customer_phone"></span>
-              </span>
-              <a :href="'https://chat.qaydao.com/app/accounts/1/conversations/' + r.conversation_id"
-                 target="_blank" class="text-blue-600 hover:underline">
-                محادثة #<span x-text="r.conversation_id"></span> ↗
-              </a>
+              <span class="channel-badge" :class="'ch-'+r.channel_type.replace('Channel::','')" x-text="channelLabel(r.channel_type)"></span>
+              <span class="text-gray-600" x-text="r.customer_name||'عميل'"></span>
+              <a :href="'https://chat.qaydao.com/app/accounts/1/conversations/'+r.conversation_id" target="_blank" class="text-blue-600 hover:underline">محادثة #<span x-text="r.conversation_id"></span> ↗</a>
+              <span x-show="r.flag_english" class="bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">⚠️ إنجليزي/غير منطقي</span>
+              <span x-show="r.flag_broken_md" class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold">⚠️ تنسيق مكسور</span>
             </div>
-            <div class="flex items-center gap-3 text-gray-500">
-              <span x-text="formatTime(r.reply_at)"></span>
-              <span class="px-2 py-0.5 rounded" :class="statusClass(r.conv_status)" x-text="statusLabel(r.conv_status)"></span>
-            </div>
+            <span class="text-gray-500" x-text="formatTime(r.reply_at)"></span>
           </div>
 
-          <!-- Customer question -->
-          <div x-show="r.customer_question" class="px-4 py-3 bg-blue-50 border-b border-blue-100">
-            <div class="text-xs text-blue-700 font-semibold mb-1">👤 العميل سأل</div>
-            <div class="text-sm text-gray-800" x-text="r.customer_question"></div>
+          <div x-show="r.customer_question" class="px-4 py-2 bg-blue-50 border-b border-blue-100">
+            <span class="text-xs text-blue-700 font-semibold">👤 العميل: </span>
+            <span class="text-sm text-gray-800" x-text="r.customer_question"></span>
           </div>
 
-          <!-- Captain reply -->
-          <div class="px-4 py-3">
-            <div class="text-xs text-purple-700 font-semibold mb-1">🤖 QAYDAO AI ردّ</div>
-            <div class="text-sm text-gray-800 whitespace-pre-wrap" x-text="r.captain_reply"></div>
+          <div class="px-4 py-2">
+            <span class="text-xs text-purple-700 font-semibold">🤖 QAYDAO AI: </span>
+            <span class="text-sm text-gray-800 whitespace-pre-wrap" x-text="r.captain_reply"></span>
+          </div>
+
+          <div class="px-4 py-2 bg-gray-50 border-t flex justify-end gap-2">
+            <button @click="openThread(r.conversation_id)" class="text-xs px-3 py-1 border rounded hover:bg-gray-100">👁 المحادثة كاملة</button>
+            <button @click="openTeach(r)" class="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded font-semibold">🎓 صحّح / علّم AI</button>
           </div>
         </div>
       </template>
     </div>
   </div>
 
+  <!-- Teach Modal -->
+  <div x-show="teach.open" @click.self="teach.open=false" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" style="display:none">
+    <div class="bg-white rounded-lg max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+      <div class="px-5 py-3 border-b flex items-center justify-between sticky top-0 bg-white">
+        <h3 class="font-bold text-purple-800">🎓 صحّح الرد وعلّم QAYDAO AI</h3>
+        <button @click="teach.open=false" class="text-gray-500 text-xl">×</button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div class="bg-gray-50 p-3 rounded text-sm">
+          <div class="text-xs text-gray-500 mb-1">الرد الأصلي (الذي تريد تصحيحه):</div>
+          <div class="text-gray-700 whitespace-pre-wrap" x-text="teach.original"></div>
+        </div>
+        <div>
+          <label class="text-sm font-bold text-gray-700">السؤال (كما يطرحه العميل):</label>
+          <textarea x-model="teach.question" rows="2" class="w-full mt-1 p-2 border rounded focus:ring-2 focus:ring-purple-300 focus:outline-none" placeholder="مثال: هل عندكم معرض لمعاينة المنتجات؟"></textarea>
+        </div>
+        <div>
+          <label class="text-sm font-bold text-gray-700">الرد الصحيح (الذي يجب أن يتعلمه AI):</label>
+          <textarea x-model="teach.answer" rows="5" class="w-full mt-1 p-2 border rounded focus:ring-2 focus:ring-purple-300 focus:outline-none" placeholder="اكتب الرد الاحترافي الصحيح..."></textarea>
+          <div class="text-xs text-gray-500 mt-1">💡 سيُضاف كـ FAQ ويصبح متاحاً لـ AI خلال ثوانٍ (مع embedding تلقائي).</div>
+        </div>
+      </div>
+      <div class="px-5 py-3 border-t flex justify-end gap-2 sticky bottom-0 bg-white">
+        <button @click="teach.open=false" class="px-4 py-2 text-sm border rounded">إلغاء</button>
+        <button @click="submitTeach()" :disabled="!teach.question.trim()||!teach.answer.trim()||teach.saving"
+          class="px-5 py-2 text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded font-semibold">
+          <span x-show="!teach.saving">✅ احفظ وعلّم AI</span><span x-show="teach.saving">جارٍ الحفظ...</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Thread Modal -->
+  <div x-show="thread.open" @click.self="thread.open=false" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" style="display:none">
+    <div class="bg-white rounded-lg max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+      <div class="px-4 py-3 border-b flex items-center justify-between">
+        <h3 class="font-bold">المحادثة #<span x-text="thread.conv_id"></span></h3>
+        <button @click="thread.open=false" class="text-gray-500 text-xl">×</button>
+      </div>
+      <div class="overflow-y-auto p-4 space-y-2">
+        <template x-for="m in thread.messages" :key="m.id">
+          <div class="text-sm" x-show="!m.private || m.sender_type==='User'">
+            <div class="text-xs text-gray-500 mb-1"><span x-text="m.sender_name"></span> · <span x-text="formatTime(m.created_at)"></span><span x-show="m.private" class="text-amber-600"> (ملاحظة داخلية)</span></div>
+            <div class="p-3 rounded whitespace-pre-wrap" :class="m.sender_type==='Contact'?'msg-customer':(m.sender_type==='Captain::Assistant'?'msg-captain':'msg-agent')" x-text="m.content"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
   <script>
     function repliesApp() {
       return {
-        replies: [],
-        stats: {},
-        channels: [],
-        loading: false,
-        refreshSec: 30,
-        timer: null,
+        replies: [], stats: {}, loading: false, refreshSec: 30, timer: null,
+        onlyFlagged: false,
         filters: { since_hours: 24, channel: 'all' },
+        teach: { open: false, question: '', answer: '', original: '', msgId: null, saving: false },
+        thread: { open: false, conv_id: null, messages: [] },
 
-        async init() {
-          await this.loadAll();
-          this.timer = setInterval(() => this.loadAll(true), this.refreshSec * 1000);
-        },
+        get flaggedCount() { return this.replies.filter(r => r.flag_english || r.flag_broken_md).length; },
+
+        async init() { await this.loadAll(); this.timer = setInterval(() => this.loadAll(true), this.refreshSec*1000); },
 
         async loadAll(silent = false) {
           if (!silent) this.loading = true;
           try {
-            const q = new URLSearchParams({
-              limit: 100,
-              channel: this.filters.channel,
-              since_hours: this.filters.since_hours
-            });
+            const q = new URLSearchParams({ limit: 100, channel: this.filters.channel, since_hours: this.filters.since_hours });
             const [rRes, sRes] = await Promise.all([
-              fetch('/products/api/captain/replies?' + q.toString()).then(r => r.json()),
-              fetch('/products/api/captain/replies/stats?since_hours=' + this.filters.since_hours).then(r => r.json())
+              fetch('/products/api/captain/replies?'+q).then(r=>r.json()),
+              fetch('/products/api/captain/replies/stats?since_hours='+this.filters.since_hours).then(r=>r.json())
             ]);
-            this.replies = rRes.replies || [];
+            let reps = rRes.replies || [];
+            if (this.onlyFlagged) reps = reps.filter(r => r.flag_english || r.flag_broken_md);
+            this.replies = reps;
             this.stats = sRes.overall || {};
-            this.channels = sRes.by_channel || [];
-          } catch (err) {
-            console.error('load error:', err);
-          } finally {
-            this.loading = false;
-          }
+          } catch(e) { console.error(e); } finally { this.loading = false; }
         },
 
-        flash() {
-          const btn = document.querySelector('button.bg-blue-600');
-          if (btn) {
-            btn.classList.add('ring-2', 'ring-blue-300');
-            setTimeout(() => btn.classList.remove('ring-2', 'ring-blue-300'), 400);
-          }
+        openTeach(r) {
+          this.teach = {
+            open: true,
+            question: r.customer_question || '',
+            answer: '',
+            original: r.captain_reply || '',
+            msgId: r.captain_msg_id,
+            saving: false
+          };
+        },
+
+        async submitTeach() {
+          this.teach.saving = true;
+          try {
+            const res = await fetch('/products/api/captain/replies/teach', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ question: this.teach.question, answer: this.teach.answer, source_msg_id: this.teach.msgId })
+            }).then(r=>r.json());
+            if (res.success) {
+              alert('✅ تم! أصبح QAYDAO AI يعرف الرد الصحيح (FAQ #'+res.faq_id+')');
+              this.teach.open = false;
+              await this.loadAll();
+            } else { alert('فشل: '+(res.error||'خطأ')); }
+          } catch(e) { alert('فشل: '+e.message); } finally { this.teach.saving = false; }
+        },
+
+        async openThread(convId) {
+          // Find a reply in this conversation to get its detail (thread)
+          const r = this.replies.find(x => x.conversation_id === convId);
+          if (!r) return;
+          try {
+            const detail = await fetch('/products/api/captain/replies/'+r.captain_msg_id+'/detail').then(r=>r.json());
+            this.thread = { open: true, conv_id: convId, messages: detail.thread || [] };
+          } catch(e) { alert('فشل: '+e.message); }
         },
 
         formatTime(ts) {
           if (!ts) return '';
-          const d = new Date(ts.replace(' ', 'T') + (ts.includes('Z') ? '' : 'Z'));
-          const now = new Date();
-          const diff = (now - d) / 1000;
-          if (diff < 60) return 'الآن';
-          if (diff < 3600) return Math.floor(diff / 60) + ' دقيقة';
-          if (diff < 86400) return Math.floor(diff / 3600) + ' ساعة';
-          return d.toLocaleString('ar-SA', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+          const d = new Date(ts.replace(' ','T')+(ts.includes('Z')?'':'Z'));
+          const diff = (Date.now()-d)/1000;
+          if (diff<60) return 'الآن';
+          if (diff<3600) return Math.floor(diff/60)+' د';
+          if (diff<86400) return Math.floor(diff/3600)+' س';
+          return d.toLocaleString('ar-SA',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
         },
-
-        channelLabel(ct) {
-          const map = {
-            'Channel::WebWidget': 'شات الموقع',
-            'Channel::Whatsapp': 'واتساب',
-            'Channel::Email': 'بريد',
-            'Channel::Instagram': 'انستغرام',
-            'Channel::Api': 'API'
-          };
-          return map[ct] || ct;
-        },
-
-        statusLabel(s) {
-          const map = { open: 'مفتوحة', pending: 'معلقة', resolved: 'محلولة', snoozed: 'مؤجلة' };
-          return map[s] || s;
-        },
-
-        statusClass(s) {
-          if (s === 'resolved') return 'bg-green-100 text-green-700';
-          if (s === 'pending') return 'bg-yellow-100 text-yellow-700';
-          if (s === 'open') return 'bg-blue-100 text-blue-700';
-          return 'bg-gray-100 text-gray-700';
-        }
+        channelLabel(ct) { return {'Channel::WebWidget':'شات','Channel::Whatsapp':'واتساب','Channel::Email':'بريد','Channel::Instagram':'انستغرام','Channel::Api':'API'}[ct]||ct; }
       };
     }
   </script>

@@ -632,6 +632,39 @@ app.get("/products/api/captain/replies", requireAuth, async (req, res) => {
   }
 });
 
+
+// ─── Reply Control (teach + correct from replies page) ───
+app.get("/products/api/captain/replies/:id/detail", requireAuth, async (req, res) => {
+  try {
+    const detail = await captain.getReplyDetail(req.params.id);
+    res.json(detail);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.post("/products/api/captain/replies/teach", requireAuth, async (req, res) => {
+  try {
+    const { question, answer, source_msg_id } = req.body || {};
+    const result = await captain.teachFromReply({
+      question, answer, source_msg_id,
+      reviewer: req.session?.user || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/products/api/captain/replies/related-faq", requireAuth, async (req, res) => {
+  try {
+    const faqs = await captain.findRelatedFAQ(req.query.text || '');
+    res.json({ faqs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/products/api/captain/replies/stats", requireAuth, async (req, res) => {
   try {
     const since_hours = parseInt(req.query.since_hours) || 24;
