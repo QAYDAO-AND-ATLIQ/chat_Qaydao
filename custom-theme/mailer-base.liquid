@@ -1,75 +1,79 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl" style="margin:0; box-sizing:border-box; font-size:14px;">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl" style="margin:0; padding:0;">
   <head>
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>{{ global_config['BRAND_NAME'] }}</title>
     <style type="text/css">
-      @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
-      img { max-width: 100%; border: 0; }
-      body {
-        -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: none;
-        width: 100% !important; height: 100%; line-height: 1.7em;
-        background-color: #F4F6F3; margin: 0;
-        font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      }
-      a { color: #6B7F5C; }
-      .qd-content a { color: #6B7F5C; }
-      @media only screen and (max-width: 640px) {
-        body { padding: 0 !important; }
-        .container { padding: 0 !important; width: 100% !important; }
-        .content { padding: 12px !important; }
-        .content-wrap { padding: 22px !important; }
-        h1 { font-size: 21px !important; }
+      @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+      * { box-sizing: border-box; }
+      img { max-width: 100%; border: 0; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+      body { -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: none; width: 100% !important; height: 100%; margin: 0; padding: 0; background-color: #EEF1EA; font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif; }
+      table { border-collapse: collapse; }
+      .qd-body p { margin: 0 0 14px; }
+      .qd-body a { color: #6B7F5C; }
+      .qd-body img { border-radius: 8px; }
+      @media only screen and (max-width: 620px) {
+        .container { width: 100% !important; padding: 0 !important; }
+        .card-pad { padding: 24px 20px !important; }
+        .logo-img { width: 160px !important; }
       }
     </style>
   </head>
-  <body dir="rtl" style="font-family:'Cairo',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; -webkit-font-smoothing:antialiased; width:100% !important; height:100%; line-height:1.7em; background-color:#F4F6F3; margin:0;" bgcolor="#F4F6F3">
-    <table class="body-wrap" width="100%" cellpadding="0" cellspacing="0" style="width:100%; background-color:#F4F6F3; margin:0;" bgcolor="#F4F6F3">
+  <body dir="rtl" style="margin:0; padding:0; background-color:#EEF1EA; font-family:'Cairo','Segoe UI',Tahoma,Arial,sans-serif; line-height:1.85;">
+    <!-- preheader spacing -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#EEF1EA;" bgcolor="#EEF1EA">
       <tr>
-        <td class="container" width="600" style="display:block !important; max-width:600px !important; margin:0 auto;" valign="top">
-          <div class="content" style="display:block; margin:0 auto; padding:24px; text-align:center;">
+        <td align="center" style="padding:28px 12px;">
+          <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:600px; margin:0 auto;">
 
-            <!-- Logo header -->
-            <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;">
-              <tr><td align="center" style="padding:8px 0 18px;">
+            <!-- Header: logo on white with green accent -->
+            <tr>
+              <td align="center" style="background-color:#FFFFFF; border-radius:16px 16px 0 0; padding:30px 30px 22px; border-bottom:3px solid #6B7F5C;">
                 <a href="{{ global_config['BRAND_URL'] }}" target="_blank" style="text-decoration:none;">
-                  <img src="https://track.qaydao.com/logo-qaydao.png" alt="QAYDAO" width="170" style="width:170px; max-width:170px; height:auto; display:inline-block;" />
+                  <img src="https://track.qaydao.com/qaydao-email-logo.png" alt="QAYDAO" class="logo-img" width="190" style="width:190px; height:auto; display:block; margin:0 auto;" />
                 </a>
-              </td></tr>
-            </table>
+              </td>
+            </tr>
 
-            <!-- Main card -->
-            <table class="main" width="100%" cellpadding="0" cellspacing="0" style="border-radius:14px; background-color:#ffffff; text-align:right; margin:0; border:1px solid #E8EDE5; border-top:4px solid #6B7F5C; box-shadow:0 2px 8px rgba(107,127,92,0.06);" bgcolor="#ffffff">
-              <tr>
-                <td class="content-wrap qd-content" dir="rtl" style="vertical-align:top; margin:0; padding:30px; text-align:right; color:#374151; font-size:15px; line-height:1.8;" valign="top">
-                  <table width="100%" cellpadding="0" cellspacing="0" style="margin:0;">
-                    {{ content_for_layout }}
-                  </table>
-                </td>
-              </tr>
-            </table>
+            <!-- Body card -->
+            <tr>
+              <td dir="rtl" class="qd-body card-pad" style="background-color:#FFFFFF; padding:32px 34px; text-align:right; direction:rtl; color:#3A4A33; font-size:15.5px; line-height:1.9; border-radius:0;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" dir="rtl" style="text-align:right; direction:rtl;">
+                  {{ content_for_layout }}
+                </table>
+              </td>
+            </tr>
+
+            <!-- Sign-off strip -->
+            <tr>
+              <td dir="rtl" style="background-color:#F7F9F5; padding:18px 34px; text-align:right; direction:rtl; color:#6B7F5C; font-size:14px; font-weight:600; border-top:1px solid #E8EDE5;">
+                فريق خدمة عملاء كواي داو في خدمتك دائماً
+              </td>
+            </tr>
 
             <!-- Footer -->
-            <div class="footer" style="color:#8A9A7B; margin:0; padding:24px 20px 36px; text-align:center; font-size:13px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin:0;">
-                <tr><td align="center" style="padding:0 0 10px; color:#6B7F5C; font-weight:600; font-size:14px;">
-                  كواي داو — أثاثٌ يليق بك
-                </td></tr>
-                <tr><td align="center" style="padding:0 0 6px; color:#7A8A6B;">
-                  <a href="https://qaydao.com" target="_blank" style="color:#6B7F5C; text-decoration:none;">qaydao.com</a>
-                  &nbsp;•&nbsp;
-                  <a href="mailto:support@qaydao.com" style="color:#6B7F5C; text-decoration:none;">support@qaydao.com</a>
-                  &nbsp;•&nbsp;
-                  <span dir="ltr">+966 54 845 6966</span>
-                </td></tr>
-                <tr><td align="center" style="padding:10px 0 0; color:#A9B89C; font-size:12px;">
-                  © {{ 'now' | date: '%Y' }} QAYDAO. جميع الحقوق محفوظة.
-                </td></tr>
-              </table>
-            </div>
+            <tr>
+              <td align="center" style="background-color:#3A4A33; border-radius:0 0 16px 16px; padding:26px 30px 28px; text-align:center;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr><td align="center" style="padding:0 0 10px; color:#FFFFFF; font-size:15px; font-weight:700;">
+                    كواي داو — أثاثٌ يليق بك
+                  </td></tr>
+                  <tr><td align="center" style="padding:0 0 4px;">
+                    <a href="https://qaydao.com" target="_blank" style="color:#C9D6BE; text-decoration:none; font-size:13px;">qaydao.com</a>
+                    <span style="color:#7A8A6B;">&nbsp;|&nbsp;</span>
+                    <a href="mailto:support@qaydao.com" style="color:#C9D6BE; text-decoration:none; font-size:13px;">support@qaydao.com</a>
+                    <span style="color:#7A8A6B;">&nbsp;|&nbsp;</span>
+                    <span dir="ltr" style="color:#C9D6BE; font-size:13px;">+966 54 845 6966</span>
+                  </td></tr>
+                  <tr><td align="center" style="padding:12px 0 0; color:#8A9A7B; font-size:11.5px;">
+                    © {{ 'now' | date: '%Y' }} QAYDAO · جميع الحقوق محفوظة
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
 
-          </div>
+          </table>
         </td>
       </tr>
     </table>
