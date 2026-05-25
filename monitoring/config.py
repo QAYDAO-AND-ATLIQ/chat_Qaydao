@@ -41,7 +41,7 @@ CAPTAIN_ERROR_THRESHOLD = 5
 CAPTAIN_ERROR_WINDOW_MIN = 10
 
 # Auto-resolve guard
-EXPECT_AUTO_RESOLVE_DISABLED = True
+EXPECT_AUTO_RESOLVE_DISABLED = False  # auto-resolve now intentionally ON (4 days)
 
 # ───────── Dedup ─────────
 ALERT_DEDUP_MINUTES = 60
