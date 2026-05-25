@@ -72,6 +72,7 @@ mkdir -p "$DST/public" "$DST/scripts" "$DST/unified-import/parsers" "$DST/unifie
 # Scripts
 [ -f "$SRC/cleanup_ghost_products.js" ]       && cp "$SRC/cleanup_ghost_products.js" "$DST/scripts/"       && echo "  ✓ scripts/cleanup_ghost_products.js"
 [ -f "$SRC/extract_learning_suggestions.js" ] && cp "$SRC/extract_learning_suggestions.js" "$DST/scripts/" && echo "  ✓ scripts/extract_learning_suggestions.js"
+[ -f "$SRC/extract_failures.js" ]            && cp "$SRC/extract_failures.js" "$DST/scripts/"            && echo "  ✓ scripts/extract_failures.js"
 [ -f "$SRC/fix_missing_embeddings.js" ]       && cp "$SRC/fix_missing_embeddings.js" "$DST/scripts/"       && echo "  ✓ scripts/fix_missing_embeddings.js"
 
 # Unified import system
