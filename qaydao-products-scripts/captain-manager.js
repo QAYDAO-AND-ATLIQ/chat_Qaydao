@@ -299,7 +299,7 @@ async function listCaptainReplies({ limit = 50, channel = null, since_hours = 24
       SELECT DISTINCT ON (cm.captain_msg_id)
         cm.captain_msg_id,
         m2.content AS customer_question,
-        m2.created_at AS customer_at
+        m2.created_at AT TIME ZONE 'UTC' AS customer_at
       FROM captain_msgs cm
       LEFT JOIN messages m2
         ON m2.conversation_id = cm.conversation_id
@@ -310,7 +310,7 @@ async function listCaptainReplies({ limit = 50, channel = null, since_hours = 24
     SELECT
       cm.captain_msg_id,
       cm.conversation_id,
-      cm.captain_at AT TIME ZONE 'Asia/Riyadh' AS reply_at,
+      cm.captain_at AT TIME ZONE 'UTC' AS reply_at,
       i.name AS inbox_name,
       i.channel_type,
       cont.name AS customer_name,
