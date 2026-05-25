@@ -35,7 +35,7 @@ services:
     env_file:
       - .env
     entrypoint: docker/entrypoints/rails.sh
-    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    command: ['sh', '-c', 'sh /app/qaydao-startup-patch.sh || true; exec bundle exec rails s -p 3000 -b 0.0.0.0']
     depends_on:
       - chatwoot-postgres
       - chatwoot-redis
@@ -52,6 +52,7 @@ services:
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
       - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
+      - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
 
   chatwoot-sidekiq:
     image: chatwoot/chatwoot:v4.13.0
@@ -78,6 +79,7 @@ services:
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
       - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
+      - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
 
 networks:
   chatwoot-internal:
