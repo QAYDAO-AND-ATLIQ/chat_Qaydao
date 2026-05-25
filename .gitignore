@@ -19,3 +19,4 @@ captain-config/backups/
 # Don't commit any rb scripts that might contain test data
 *.rb.bak
 test_*.rb
+captain-config/MAINTENANCE

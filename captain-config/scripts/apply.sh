@@ -17,6 +17,16 @@ if [ ! -f "$SEED_FILE" ]; then
   exit 1
 fi
 
+# Respect maintenance mode — if Captain is intentionally paused, do nothing
+MAINTENANCE_FLAG="$SCRIPT_DIR/../MAINTENANCE"
+if [ -f "$MAINTENANCE_FLAG" ]; then
+  echo "⏸️  Captain is in MAINTENANCE mode — skipping apply (set by pause.sh)."
+  echo "    Flag: $MAINTENANCE_FLAG"
+  cat "$MAINTENANCE_FLAG" 2>/dev/null | sed 's/^/    /'
+  echo "    Run resume.sh to bring Captain back."
+  exit 0
+fi
+
 echo "📦 Copying seed script into chatwoot_sidekiq..."
 docker cp "$SEED_FILE" chatwoot_sidekiq:/tmp/seed_captain.rb
 

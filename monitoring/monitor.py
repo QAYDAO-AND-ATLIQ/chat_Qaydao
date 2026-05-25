@@ -409,9 +409,22 @@ def mark_alert_sent(check_id: str, redis_client) -> None:
 
 # ──────────────── Main ────────────────
 
+MAINTENANCE_FLAG = "/root/chat-qaydao/captain-config/MAINTENANCE"
+
+# Checks to skip while Captain is intentionally paused for maintenance
+CAPTAIN_CHECKS_SKIPPED_IN_MAINTENANCE = {
+    "captain_features", "captain_inbox_binding", "captain_inbox_coverage",
+    "captain_runtime", "rule_event_correct", "pricing_plan", "faq_embeddings",
+}
+
+
 def main():
     rh = now_riyadh()
     log.info(f"=== Monitor tick @ {rh.strftime('%Y-%m-%d %H:%M:%S %Z')} ===")
+
+    maintenance = os.path.exists(MAINTENANCE_FLAG)
+    if maintenance:
+        log.info("⏸️  MAINTENANCE MODE active — Captain checks will be skipped (no false alerts)")
 
     try:
         rdb = redis.Redis.from_url(cfg.DEDUP_REDIS_URL, decode_responses=True, socket_timeout=3)
@@ -444,6 +457,10 @@ def main():
     for check_fn in checks:
         try:
             check_id, ok, msg = check_fn()
+            # During maintenance, don't alert on intentionally-down captain pieces
+            if maintenance and check_id in CAPTAIN_CHECKS_SKIPPED_IN_MAINTENANCE:
+                log.info(f"  ⏸️  {check_id}: skipped (maintenance mode)")
+                continue
         except Exception as e:
             log.exception(f"check {check_fn.__name__} crashed")
             check_id, ok, msg = check_fn.__name__, False, f"فحص داخلي تعطل: {e}"
