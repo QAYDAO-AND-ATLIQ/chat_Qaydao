@@ -634,6 +634,35 @@ app.get("/products/api/captain/replies", requireAuth, async (req, res) => {
 
 
 // ─── Reply Control (teach + correct from replies page) ───
+
+// ─── Captain Maintenance (pause/resume from dashboard) ───
+app.get("/products/api/captain/status", requireAuth, async (req, res) => {
+  try {
+    const status = await captain.getCaptainStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/products/api/captain/pause", requireAuth, async (req, res) => {
+  try {
+    const result = await captain.pauseCaptain();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/products/api/captain/resume", requireAuth, async (req, res) => {
+  try {
+    const result = await captain.resumeCaptain();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/products/api/captain/replies/:id/detail", requireAuth, async (req, res) => {
   try {
     const detail = await captain.getReplyDetail(req.params.id);

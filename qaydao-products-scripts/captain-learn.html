@@ -120,21 +120,34 @@
           </div>
 
           <!-- Actions -->
-          <div class="px-4 py-3 flex items-center justify-between bg-gray-50">
-            <div x-show="s.status === 'approved'" class="text-sm text-green-700">
-              ✅ مقبولة → FAQ #<span x-text="s.created_faq_id"></span>
-              <span class="text-gray-500" x-show="s.reviewed_by">— بواسطة <span x-text="s.reviewed_by"></span></span>
+          <div class="px-4 py-3 flex items-center justify-between bg-gray-50 gap-3 flex-wrap">
+            <div class="text-sm">
+              <span x-show="s.status === 'approved'" class="text-green-700">
+                ✅ مقبولة → FAQ #<span x-text="s.created_faq_id"></span>
+                <span class="text-gray-500" x-show="s.reviewed_by">— بواسطة <span x-text="s.reviewed_by"></span></span>
+              </span>
+              <span x-show="s.status === 'rejected'" class="text-gray-600">
+                ❌ مرفوضة — <span x-text="s.rejection_reason || 'بدون سبب'"></span>
+                <span class="text-purple-600 font-semibold">— يمكنك تعديلها والموافقة عليها أدناه</span>
+              </span>
             </div>
-            <div x-show="s.status === 'rejected'" class="text-sm text-gray-600">
-              ❌ مرفوضة — <span x-text="s.rejection_reason || 'بدون سبب'"></span>
-            </div>
-            <div x-show="s.status === 'pending'" class="flex gap-2 mr-auto">
-              <button @click="reject(s)" class="px-4 py-1.5 text-sm border border-red-300 text-red-700 hover:bg-red-50 rounded">
+            <div class="flex gap-2 mr-auto">
+              <!-- Reject: only for pending -->
+              <button x-show="s.status === 'pending'" @click="reject(s)"
+                class="px-4 py-1.5 text-sm border border-red-300 text-red-700 hover:bg-red-50 rounded">
                 ❌ رفض
               </button>
-              <button @click="approve(s)" :disabled="!s.suggested_question?.trim() || !s.suggested_answer?.trim()"
+              <!-- Approve/Save: shown for pending AND rejected (so you can rescue + edit) -->
+              <button x-show="s.status !== 'approved'" @click="approve(s)"
+                :disabled="!s.suggested_question?.trim() || !s.suggested_answer?.trim()"
                 class="px-4 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded font-semibold">
-                ✅ موافقة + إضافة كـ FAQ
+                ✅ <span x-text="s.status === 'rejected' ? 'حفظ والموافقة (إعادة نظر)' : 'موافقة + إضافة كـ FAQ'"></span>
+              </button>
+              <!-- Re-edit: for already approved -->
+              <button x-show="s.status === 'approved'" @click="approve(s)"
+                :disabled="!s.suggested_question?.trim() || !s.suggested_answer?.trim()"
+                class="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded font-semibold">
+                💾 حفظ التعديلات (FAQ جديد)
               </button>
             </div>
           </div>

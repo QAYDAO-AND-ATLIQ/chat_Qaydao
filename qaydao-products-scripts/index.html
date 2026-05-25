@@ -38,6 +38,48 @@
     </div>
   </div>
 
+  <!-- ═══ Captain AI Control (pause/resume) ═══ -->
+  <div x-data="captainControl()" x-init="loadStatus()" class="mb-6">
+    <div class="rounded-2xl p-5 shadow border-2 transition"
+         :class="status.paused ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+               :class="status.paused ? 'bg-amber-200' : 'bg-green-200'">🤖</div>
+          <div>
+            <div class="font-bold text-lg" :class="status.paused ? 'text-amber-800' : 'text-green-800'">
+              QAYDAO AI —
+              <span x-show="!status.paused">يعمل الآن ✅</span>
+              <span x-show="status.paused">متوقف للصيانة ⏸️</span>
+            </div>
+            <div class="text-xs text-gray-600">
+              <span x-show="!status.paused">يرد على العملاء عبر <span x-text="status.active_channels"></span> قنوات</span>
+              <span x-show="status.paused">العملاء يحصلون على خدمة بشرية فقط · البيانات محفوظة</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <!-- Pause button -->
+          <button x-show="!status.paused" @click="pause()" :disabled="busy"
+            class="bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white px-5 py-2.5 rounded-xl font-bold">
+            <span x-show="!busy">⏸️ إيقاف للتحسين</span>
+            <span x-show="busy">جارٍ الإيقاف...</span>
+          </button>
+          <!-- Resume button -->
+          <button x-show="status.paused" @click="resume()" :disabled="busy"
+            class="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-5 py-2.5 rounded-xl font-bold">
+            <span x-show="!busy">▶️ تشغيل QAYDAO AI</span>
+            <span x-show="busy">جارٍ التشغيل...</span>
+          </button>
+          <a href="/products/captain" class="text-sm border border-gray-300 hover:bg-white px-4 py-2.5 rounded-xl font-semibold text-gray-700">⚙️ إدارة Captain</a>
+        </div>
+      </div>
+      <div x-show="status.paused && status.paused_at" class="mt-3 text-xs text-amber-700 border-t border-amber-200 pt-2">
+        ⏱️ تم الإيقاف منذ: <span x-text="formatPausedAt(status.paused_at)"></span>
+      </div>
+    </div>
+  </div>
+
   <!-- Master Stats Hero -->
   <div class="qaydao-green text-white rounded-2xl p-6 mb-6 shadow-xl">
     <div class="flex flex-wrap items-center justify-between gap-4">
@@ -555,5 +597,41 @@ function dashboard() {
   };
 }
 </script>
+
+  <script>
+    function captainControl() {
+      return {
+        status: { paused: false, active_channels: 0, paused_at: null },
+        busy: false,
+        async loadStatus() {
+          try {
+            this.status = await fetch('/products/api/captain/status').then(r => r.json());
+          } catch (e) { console.error(e); }
+        },
+        async pause() {
+          if (!confirm('إيقاف QAYDAO AI؟\n\nسيتوقف عن الرد على العملاء. الموظفون يردون عادي. كل البيانات محفوظة.')) return;
+          this.busy = true;
+          try {
+            const r = await fetch('/products/api/captain/pause', { method: 'POST' }).then(r => r.json());
+            if (r.success) { await this.loadStatus(); alert('⏸️ تم إيقاف QAYDAO AI. يمكنك التحسين الآن بأمان.'); }
+            else alert('فشل: ' + (r.error || 'خطأ'));
+          } catch (e) { alert('فشل: ' + e.message); } finally { this.busy = false; }
+        },
+        async resume() {
+          if (!confirm('تشغيل QAYDAO AI مرة أخرى؟\n\nسيعود للرد على العملاء عبر كل القنوات.')) return;
+          this.busy = true;
+          try {
+            const r = await fetch('/products/api/captain/resume', { method: 'POST' }).then(r => r.json());
+            if (r.success) { await this.loadStatus(); alert('▶️ QAYDAO AI يعمل الآن على كل القنوات!'); }
+            else alert('فشل: ' + (r.error || 'خطأ'));
+          } catch (e) { alert('فشل: ' + e.message); } finally { this.busy = false; }
+        },
+        formatPausedAt(ts) {
+          if (!ts) return '';
+          try { return new Date(ts).toLocaleString('ar-SA'); } catch (e) { return ts; }
+        }
+      };
+    }
+  </script>
 </body>
 </html>

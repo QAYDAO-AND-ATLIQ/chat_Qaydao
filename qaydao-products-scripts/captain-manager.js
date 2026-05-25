@@ -614,6 +614,65 @@ async function findRelatedFAQ(replyText) {
   return rows;
 }
 
+
+// ────────────────────────────────────────────────────────────
+//  MAINTENANCE MODE — pause/resume Captain from the dashboard
+// ────────────────────────────────────────────────────────────
+const { execFile } = require("child_process");
+const fsSync = require("fs");
+
+const MAINTENANCE_FLAG = "/root/chat-qaydao/captain-config/MAINTENANCE";
+const PAUSE_SCRIPT = "/root/chat-qaydao/captain-config/scripts/pause.sh";
+const RESUME_SCRIPT = "/root/chat-qaydao/captain-config/scripts/resume.sh";
+
+async function getCaptainStatus() {
+  // Paused if the flag exists OR no inbox bindings
+  const flagExists = fsSync.existsSync(MAINTENANCE_FLAG);
+  let bindings = 0;
+  try {
+    const { rows } = await chatwootPool.query(
+      "SELECT COUNT(*)::int AS n FROM captain_inboxes WHERE captain_assistant_id = $1",
+      [ASSISTANT_ID]
+    );
+    bindings = rows[0].n;
+  } catch (e) { /* ignore */ }
+
+  let pausedAt = null, pausedBy = null;
+  if (flagExists) {
+    try {
+      const txt = fsSync.readFileSync(MAINTENANCE_FLAG, "utf-8");
+      pausedAt = (txt.match(/paused_at=(.+)/) || [])[1] || null;
+      pausedBy = (txt.match(/paused_by=(.+)/) || [])[1] || null;
+    } catch (e) { /* ignore */ }
+  }
+
+  return {
+    paused: flagExists,
+    active_channels: bindings,
+    paused_at: pausedAt,
+    paused_by: pausedBy,
+  };
+}
+
+function runScript(scriptPath) {
+  return new Promise((resolve, reject) => {
+    execFile("/bin/bash", [scriptPath], { timeout: 120000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error((stderr || stdout || err.message).slice(-500)));
+      resolve((stdout || "").slice(-1000));
+    });
+  });
+}
+
+async function pauseCaptain() {
+  const out = await runScript(PAUSE_SCRIPT);
+  return { success: true, paused: true, output: out };
+}
+
+async function resumeCaptain() {
+  const out = await runScript(RESUME_SCRIPT);
+  return { success: true, paused: false, output: out };
+}
+
 module.exports = {
   // Documents
   listDocuments, getDocument, createDocument, updateDocument, deleteDocument,
@@ -627,6 +686,8 @@ module.exports = {
   listCaptainReplies, getRepliesStats, getRepliesByChannel,
   // Reply control
   getReplyDetail, teachFromReply, findRelatedFAQ,
+  // Maintenance
+  getCaptainStatus, pauseCaptain, resumeCaptain,
   // Learning
   listLearningSuggestions, getLearningSuggestion, approveLearningSuggestion,
   rejectLearningSuggestion, getLearningStats, fetchConversationContext,
