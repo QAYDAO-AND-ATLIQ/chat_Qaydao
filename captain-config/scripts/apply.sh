@@ -31,7 +31,8 @@ echo "📦 Copying seed script into chatwoot_sidekiq..."
 docker cp "$SEED_FILE" chatwoot_sidekiq:/tmp/seed_captain.rb
 
 echo "🚀 Running seed (this may take 30-90 seconds)..."
-docker exec chatwoot_sidekiq bundle exec rails runner /tmp/seed_captain.rb 2>&1 | \
+CAPTAIN_MAINTENANCE=$([ -f "$MAINTENANCE_FLAG" ] && echo 1 || echo 0) \
+  docker exec -e CAPTAIN_MAINTENANCE="$CAPTAIN_MAINTENANCE" chatwoot_sidekiq bundle exec rails runner /tmp/seed_captain.rb 2>&1 | \
   grep -vE "^(W|I), \[|DEPRECATION WARNING|RubyLLM|^$" | \
   grep -vE "Sidekiq 7|connecting to Redis|warn|Sidekiq notice"
 
