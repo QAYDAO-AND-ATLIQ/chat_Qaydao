@@ -51,6 +51,7 @@ services:
       - ./patches/jobs/qaydao_retry_unassigned_conversations_job.rb:/app/app/jobs/qaydao_retry_unassigned_conversations_job.rb:ro
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
+      - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
 
   chatwoot-sidekiq:
     image: chatwoot/chatwoot:v4.13.0
@@ -76,6 +77,7 @@ services:
       - ./patches/jobs/qaydao_retry_unassigned_conversations_job.rb:/app/app/jobs/qaydao_retry_unassigned_conversations_job.rb:ro
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
+      - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
 
 networks:
   chatwoot-internal:
