@@ -39,3 +39,4 @@ CAPTAIN_MAINTENANCE=$([ -f "$MAINTENANCE_FLAG" ] && echo 1 || echo 0) \
 echo ""
 echo "✅ Done. Run monitor to verify:"
 echo "   cd /root/chat-qaydao/monitoring && python3 monitor.py"
+bash "$(dirname "$0")/patch_label_filter.sh" 2>/dev/null || true
