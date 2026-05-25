@@ -448,6 +448,31 @@ def check_handoff_spike() -> tuple[str, bool, str]:
     )
 
 
+def check_whatsapp_delivery_errors() -> tuple[str, bool, str]:
+    """Alert if WhatsApp outgoing messages are failing with eligibility/payment
+    error 131042 at an elevated rate (Meta Business account issue)."""
+    val = db_query(
+        "SELECT COUNT(*) FROM messages m "
+        "JOIN conversations c ON c.id=m.conversation_id "
+        "JOIN inboxes i ON i.id=c.inbox_id "
+        "WHERE i.channel_type='Channel::Whatsapp' "
+        "AND m.content_attributes::text LIKE '%131042%' "
+        "AND m.created_at > NOW() - INTERVAL '6 hours';"
+    )
+    try:
+        n = int(val)
+    except (ValueError, TypeError):
+        return "whatsapp_131042", True, "skipped (parse error)"
+    threshold = 20
+    if n <= threshold:
+        return "whatsapp_131042", True, f"{n} خطأ 131042 في آخر 6 ساعات (ضمن الحد)"
+    return "whatsapp_131042", False, (
+        f"أخطاء واتساب 131042 مرتفعة: {n} في آخر 6 ساعات (الحد {threshold}).\n"
+        f"خطأ أهلية/دفع في حساب WhatsApp Business — راجع Meta Business Manager "
+        f"(طريقة الدفع + التحقق + جودة الرقم). قد يؤثر على تسليم الرسائل."
+    )
+
+
 MAINTENANCE_FLAG = "/root/chat-qaydao/captain-config/MAINTENANCE"
 
 # Checks to skip while Captain is intentionally paused for maintenance
@@ -455,7 +480,7 @@ MAINTENANCE_FLAG = "/root/chat-qaydao/captain-config/MAINTENANCE"
 CRITICAL_CHECKS_ESCALATE_TO_RAMI = {
     "captain_config", "captain_runtime", "captain_features",
     "captain_inbox_binding", "widget_bridge_container", "widget_bridge_health",
-    "open_backlog", "handoff_spike",
+    "open_backlog", "handoff_spike", "whatsapp_131042",
 }
 
 CAPTAIN_CHECKS_SKIPPED_IN_MAINTENANCE = {
@@ -516,6 +541,7 @@ def main():
         check_pricing_plan,
         check_open_backlog,
         check_handoff_spike,
+        check_whatsapp_delivery_errors,
     ]
 
     state = load_state()
