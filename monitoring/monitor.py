@@ -409,13 +409,79 @@ def mark_alert_sent(check_id: str, redis_client) -> None:
 
 # ──────────────── Main ────────────────
 
+def check_open_backlog() -> tuple[str, bool, str]:
+    """Alert if too many ACTIVE conversations (last 24h) are sitting open.
+    Counts only recently-active open chats, ignoring historical backlog."""
+    val = db_query(
+        "SELECT COUNT(*) FROM conversations WHERE account_id=1 AND status=0 "
+        "AND last_activity_at > NOW() - INTERVAL '24 hours';"
+    )
+    try:
+        n = int(val)
+    except (ValueError, TypeError):
+        return "open_backlog", True, "skipped (parse error)"
+    threshold = 80
+    if n <= threshold:
+        return "open_backlog", True, f"{n} محادثة مفتوحة نشطة (ضمن الحد)"
+    return "open_backlog", False, (
+        f"تكدّس محادثات: {n} محادثة مفتوحة نشطة خلال 24 ساعة (الحد {threshold}).\n"
+        f"قد يحتاج QAYDAO AI مراجعة، أو هناك أسئلة متكررة لا يجيب عنها."
+    )
+
+
+def check_handoff_spike() -> tuple[str, bool, str]:
+    """Alert if Captain is handing off too much in the last hour (failing to answer)."""
+    val = db_query(
+        "SELECT COUNT(*) FROM messages WHERE sender_type='Captain::Assistant' "
+        "AND content LIKE 'Auto-handoff:%' AND created_at > NOW() - INTERVAL '1 hour';"
+    )
+    try:
+        n = int(val)
+    except (ValueError, TypeError):
+        return "handoff_spike", True, "skipped (parse error)"
+    threshold = 25
+    if n <= threshold:
+        return "handoff_spike", True, f"{n} تحويل في آخر ساعة (طبيعي)"
+    return "handoff_spike", False, (
+        f"ارتفاع التحويلات: {n} تحويل لموظف في آخر ساعة (الحد {threshold}).\n"
+        f"قد يعني أن QAYDAO AI يعجز عن الإجابة — راجع نوعية الأسئلة."
+    )
+
+
 MAINTENANCE_FLAG = "/root/chat-qaydao/captain-config/MAINTENANCE"
 
 # Checks to skip while Captain is intentionally paused for maintenance
+# Critical checks that escalate to Rami directly (Telegram/Email), not just inbox
+CRITICAL_CHECKS_ESCALATE_TO_RAMI = {
+    "captain_config", "captain_runtime", "captain_features",
+    "captain_inbox_binding", "widget_bridge_container", "widget_bridge_health",
+    "open_backlog", "handoff_spike",
+}
+
 CAPTAIN_CHECKS_SKIPPED_IN_MAINTENANCE = {
     "captain_features", "captain_inbox_binding", "captain_inbox_coverage",
     "captain_runtime", "rule_event_correct", "pricing_plan", "faq_embeddings",
 }
+
+
+def escalate_to_rami(check_id: str, msg: str) -> None:
+    """Send a critical alert directly to Rami via Telegram/Email (alert_rami.py)."""
+    import subprocess
+    subject = f"تنبيه حرج: QAYDAO AI — {check_id}"
+    body = (
+        f"تم رصد مشكلة حرجة في نظام خدمة العملاء QAYDAO AI:\n\n"
+        f"الفحص: {check_id}\n"
+        f"التفاصيل: {msg}\n\n"
+        f"الوقت: {now_riyadh().strftime('%Y-%m-%d %H:%M %Z')}\n"
+        f"يرجى المتابعة في أقرب وقت."
+    )
+    try:
+        script = "/root/chat-qaydao/monitoring/alert_rami.py"
+        r = subprocess.run(["python3", script, subject, body],
+                           capture_output=True, text=True, timeout=40)
+        log.info(f"    → escalated to Rami: {r.stdout.strip() or r.stderr.strip()[:100]}")
+    except Exception as e:
+        log.warning(f"    → escalate_to_rami failed: {e}")
 
 
 def main():
@@ -448,6 +514,8 @@ def main():
         check_captain_inbox_coverage,
         check_faq_embeddings,
         check_pricing_plan,
+        check_open_backlog,
+        check_handoff_spike,
     ]
 
     state = load_state()
@@ -486,6 +554,9 @@ def main():
                 ok_sent = send_alert(check_id, msg)
                 if ok_sent and rdb:
                     mark_alert_sent(check_id, rdb)
+                # Escalate critical issues directly to Rami (Telegram/Email)
+                if check_id in CRITICAL_CHECKS_ESCALATE_TO_RAMI:
+                    escalate_to_rami(check_id, msg)
 
     save_state(new_state)
     log.info(f"=== done. active_alerts={len(new_state)} ===\n")

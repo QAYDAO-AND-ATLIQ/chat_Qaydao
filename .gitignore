@@ -20,3 +20,4 @@ captain-config/backups/
 *.rb.bak
 test_*.rb
 captain-config/MAINTENANCE
+alert.env
