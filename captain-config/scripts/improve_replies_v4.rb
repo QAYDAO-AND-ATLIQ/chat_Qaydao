@@ -47,4 +47,26 @@ Captain::Scenario.where(assistant_id: 1).order(:id).each do |s|
   end
 end
 
+# ── 3. Scenario 1 match-accuracy rule (don't show a wrong product type) ──────
+MATCH_RULE = <<~RULE
+
+دقة البحث والمطابقة (مهم جداً — لا تخالفه):
+• ابحث بالكلمات التي ذكرها العميل حرفياً (مثل: "كرسي ألعاب"، "كرسي قيمنق/gaming"، "كرسي مكتب"). لا تستبدل نوع المنتج ولا تخمّن فئة أخرى.
+• قبل عرض أي نتيجة، تأكّد أنها تطابق ما طلبه العميل فعلاً. إذا طلب نوعاً (مثل كرسي ألعاب) وجاءت النتائج من فئة مختلفة (مثل كرسي طعام)، لا تعرضها إطلاقاً.
+• في هذه الحالة: أعد البحث بصياغة أدق مرة واحدة. فإن لم تجد تطابقاً حقيقياً، كن صادقاً وقل مثلاً: "لم أجد كرسي ألعاب مطابقاً في المتجر حالياً. هل تود أن أبحث في فئة قريبة، أو أحوّلك لمختص لمساعدتك؟" — ولا تعرض نوعاً لم يطلبه العميل.
+RULE
+
+s1 = Captain::Scenario.find_by(id: 1, assistant_id: 1)
+if s1 && !s1.instruction.to_s.include?("دقة البحث والمطابقة")
+  if s1.instruction.include?("خطوات البحث:")
+    s1.instruction = s1.instruction.sub("خطوات البحث:", MATCH_RULE.strip + "\n\nخطوات البحث:")
+  else
+    s1.instruction = s1.instruction.rstrip + "\n" + MATCH_RULE
+  end
+  s1.save!
+  puts "✓ scenario 1: match-accuracy rule added"
+else
+  puts "= scenario 1: match-accuracy rule present"
+end
+
 puts "✅ QAYDAO AI v4 reply-quality improvements applied"
