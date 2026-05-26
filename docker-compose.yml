@@ -64,7 +64,7 @@ services:
       - INSTALLATION_ENV=docker
     env_file:
       - .env
-    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    command: ['sh', '-c', 'sh /app/qaydao-startup-patch.sh || true; exec bundle exec sidekiq -C config/sidekiq.yml']
     depends_on:
       - chatwoot-postgres
       - chatwoot-redis
