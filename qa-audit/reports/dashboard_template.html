@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QAYDAO · QA Dashboard · مايو 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.0/dist/cdn.min.js" defer></script>
+<style>
+  :root {
+    --bg-base: #0a0e1a;
+    --bg-panel: #111827;
+    --bg-card: #1a2234;
+    --bg-elevated: #232c42;
+    --border: #2d3958;
+    --text-primary: #e5e9f5;
+    --text-secondary: #9ca8c4;
+    --text-muted: #6b7799;
+    --accent-green: #10b981;
+    --accent-green-bright: #34d399;
+    --accent-amber: #f59e0b;
+    --accent-red: #ef4444;
+    --accent-blue: #3b82f6;
+    --accent-purple: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    font-family: 'Cairo', -apple-system, sans-serif;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: "tnum"; }
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(16,185,129,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(16,185,129,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; }
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; transition: all 0.2s; }
+  .card:hover { border-color: var(--accent-green); transform: translateY(-2px); }
+  .severity-critical { background: rgba(239,68,68,0.12); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+  .severity-high { background: rgba(245,158,11,0.12); color: #fcd34d; border: 1px solid rgba(245,158,11,0.4); }
+  .severity-medium { background: rgba(59,130,246,0.12); color: #93c5fd; border: 1px solid rgba(59,130,246,0.4); }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .conv-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white !important; padding: 6px 14px; border-radius: 8px;
+    text-decoration: none; font-weight: 700; font-size: 13px;
+    transition: all 0.15s; box-shadow: 0 2px 8px rgba(16,185,129,0.2);
+  }
+  .conv-link:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16,185,129,0.4); }
+  .filter-input {
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text-primary); padding: 8px 14px; border-radius: 8px;
+    font-family: 'Cairo'; outline: none; transition: all 0.15s;
+  }
+  .filter-input:focus { border-color: var(--accent-green); box-shadow: 0 0 0 3px rgba(16,185,129,0.15); }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; }
+  thead th {
+    background: var(--bg-elevated); color: var(--text-secondary);
+    padding: 12px 10px; font-size: 12px; font-weight: 700; text-align: right;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
+  }
+  tbody td {
+    padding: 12px 10px; border-bottom: 1px solid rgba(45,57,88,0.5);
+    font-size: 13px; vertical-align: top;
+  }
+  tbody tr:hover { background: rgba(16,185,129,0.04); }
+  .scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar::-webkit-scrollbar-track { background: var(--bg-panel); }
+  .scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .scrollbar::-webkit-scrollbar-thumb:hover { background: var(--accent-green); }
+  .stat-num { font-size: 36px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .pulse { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  .glow { box-shadow: 0 0 40px rgba(16,185,129,0.15); }
+  .qaydao-gradient { background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%); }
+  .status-open { color: #fbbf24; }
+  .status-resolved { color: #10b981; }
+  .status-pending { color: #60a5fa; }
+  .status-snoozed { color: #a78bfa; }
+  .truncate-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  details summary { cursor: pointer; list-style: none; }
+  details summary::-webkit-details-marker { display: none; }
+  .chip {
+    background: var(--bg-elevated); color: var(--text-secondary);
+    padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;
+    display: inline-block; margin: 1px;
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ===== STICKY HEADER ===== -->
+<header class="sticky top-0 z-50 panel rounded-none border-x-0 border-t-0 backdrop-blur-md" style="background:rgba(10,14,26,0.95)">
+  <div class="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+    <div class="flex items-center gap-4">
+      <div class="qaydao-gradient w-11 h-11 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-lg">Q</div>
+      <div>
+        <div class="text-xs text-[var(--text-muted)] mono">QAYDAO · QA AUDIT SYSTEM</div>
+        <div class="text-xl font-bold">تقرير جودة خدمة العملاء — مايو 2026</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <div class="text-[var(--text-muted)]">الفترة:</div>
+      <div class="mono px-3 py-1.5 bg-[var(--bg-card)] rounded-lg border border-[var(--border)]">2026-05-01 → 2026-05-19</div>
+      <div class="w-px h-6 bg-[var(--border)]"></div>
+      <div class="flex items-center gap-2 text-[var(--accent-green-bright)] text-xs">
+        <div class="w-2 h-2 bg-[var(--accent-green)] rounded-full pulse"></div>
+        <span class="mono">LIVE DATA</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="grid-bg" x-data="dashboard()" x-init="init()">
+<div class="max-w-[1600px] mx-auto p-6 space-y-6">
+
+<!-- ===== CRITICAL ALERTS BANNER ===== -->
+<section class="grid grid-cols-1 md:grid-cols-4 gap-3">
+  <div class="card p-4 border-l-4 border-l-[var(--accent-red)]">
+    <div class="text-xs text-[var(--text-muted)] mb-1">🔴 حرج · فقدان عملاء</div>
+    <div class="stat-num text-[var(--accent-red)]" x-text="counts.ghost_closure">22</div>
+    <div class="text-sm mt-1">Ghost Closures (إغلاق دون رد بشري)</div>
+  </div>
+  <div class="card p-4 border-l-4 border-l-[var(--accent-red)]">
+    <div class="text-xs text-[var(--text-muted)] mb-1">🔴 حرج · PDPL</div>
+    <div class="stat-num text-[var(--accent-red)]" x-text="counts.pdpl_iban">6</div>
+    <div class="text-sm mt-1">IBAN عملاء في شات عادي</div>
+  </div>
+  <div class="card p-4 border-l-4 border-l-[var(--accent-red)]">
+    <div class="text-xs text-[var(--text-muted)] mb-1">🔴 حرج · بدون مالك</div>
+    <div class="stat-num text-[var(--accent-red)]" x-text="counts.unassigned_no_reply">7</div>
+    <div class="text-sm mt-1">محادثات بلا agent ولا رد</div>
+  </div>
+  <div class="card p-4 border-l-4 border-l-[var(--accent-amber)]">
+    <div class="text-xs text-[var(--text-muted)] mb-1">🟠 عالي · غضب وشكاوى</div>
+    <div class="stat-num text-[var(--accent-amber)]" x-text="counts.angry_customer">50</div>
+    <div class="text-sm mt-1">عملاء غاضبون / استرجاع</div>
+  </div>
+</section>
+
+<!-- ===== KPI OVERVIEW ===== -->
+<section>
+  <h2 class="text-sm uppercase tracking-wider text-[var(--text-muted)] mb-3 font-bold">📊 ملخص عام</h2>
+  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+    <div class="card p-4"><div class="text-xs text-[var(--text-muted)]">إجمالي المحادثات</div><div class="stat-num mono mt-1" x-text="data.overview.total">1359</div></div>
+    <div class="card p-4"><div class="text-xs text-[var(--text-muted)]">إجمالي الرسائل</div><div class="stat-num mono mt-1" x-text="data.overview.total_messages">25473</div></div>
+    <div class="card p-4"><div class="text-xs text-[var(--text-muted)]">محلولة</div><div class="stat-num mono mt-1 status-resolved" x-text="data.overview.resolved">1170</div><div class="text-xs text-[var(--text-muted)] mt-1 mono" x-text="((data.overview.resolved/data.overview.total)*100).toFixed(1) + '%'"></div></div>
+    <div class="card p-4"><div class="text-xs text-[var(--text-muted)]">معلقة</div><div class="stat-num mono mt-1 status-pending" x-text="data.overview.pending">120</div></div>
+    <div class="card p-4"><div class="text-xs text-[var(--text-muted)]">مفتوحة</div><div class="stat-num mono mt-1 status-open" x-text="data.overview.open">35</div></div>
+    <div class="card p-4"><div class="text-xs text-[var(--text-muted)]">متوسط رسائل/محادثة</div><div class="stat-num mono mt-1" x-text="data.overview.avg_messages_per_conv">18.7</div></div>
+  </div>
+</section>
+
+<!-- ===== CHARTS ROW ===== -->
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <div class="panel p-5">
+    <h3 class="text-base font-bold mb-1">توزيع المشاكل المكتشفة</h3>
+    <div class="text-xs text-[var(--text-muted)] mb-3">حسب النوع (إجمالي <span class="mono" x-text="data.issues.length"></span> مشكلة)</div>
+    <canvas id="issuesChart" height="220"></canvas>
+  </div>
+  <div class="panel p-5">
+    <h3 class="text-base font-bold mb-1">أداء الـ Agents</h3>
+    <div class="text-xs text-[var(--text-muted)] mb-3">المحادثات + متوسط أول رد (دقيقة)</div>
+    <canvas id="agentsChart" height="220"></canvas>
+  </div>
+  <div class="panel p-5">
+    <h3 class="text-base font-bold mb-1">القنوات</h3>
+    <div class="text-xs text-[var(--text-muted)] mb-3">توزيع المحادثات</div>
+    <canvas id="channelsChart" height="220"></canvas>
+  </div>
+</section>
+
+<!-- ===== AGENT PERFORMANCE CARDS ===== -->
+<section>
+  <h2 class="text-sm uppercase tracking-wider text-[var(--text-muted)] mb-3 font-bold">👥 أداء الـ Agents تفصيلياً</h2>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <template x-for="agent in data.agents.filter(a => a.conversations > 50)" :key="agent.name">
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="font-bold text-lg" x-text="agent.name"></div>
+          <div class="badge"
+               :class="agent.avg_first_reply_min < 60 ? 'severity-medium' : agent.avg_first_reply_min < 150 ? 'severity-high' : 'severity-critical'"
+               style="background:transparent">
+            <span x-text="agent.avg_first_reply_min < 60 ? '🥇 الأسرع' : agent.avg_first_reply_min < 150 ? 'متوسط' : '⚠️ بطيء'"></span>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <div class="text-[var(--text-muted)] text-xs mb-1">المحادثات</div>
+            <div class="mono text-xl font-bold" x-text="agent.conversations"></div>
+          </div>
+          <div>
+            <div class="text-[var(--text-muted)] text-xs mb-1">معدل الحل</div>
+            <div class="mono text-xl font-bold status-resolved" x-text="agent.resolution_rate + '%'"></div>
+          </div>
+          <div>
+            <div class="text-[var(--text-muted)] text-xs mb-1">متوسط أول رد</div>
+            <div class="mono text-xl font-bold" :class="agent.avg_first_reply_min < 60 ? 'status-resolved' : agent.avg_first_reply_min > 150 ? 'status-open' : ''" x-text="agent.avg_first_reply_min + ' دق'"></div>
+          </div>
+          <div>
+            <div class="text-[var(--text-muted)] text-xs mb-1">معلّقة</div>
+            <div class="mono text-xl font-bold status-pending" x-text="agent.pending"></div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+</section>
+
+<!-- ===== ISSUES TABLE ===== -->
+<section class="panel p-5">
+  <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+    <div>
+      <h2 class="text-lg font-bold">🔍 جدول المشاكل المكتشفة</h2>
+      <div class="text-xs text-[var(--text-muted)] mt-1">
+        <span class="mono" x-text="filtered.length"></span> من
+        <span class="mono" x-text="data.issues.length"></span> ·
+        اضغط على رقم المحادثة لفتحها في Chatwoot
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
+    <input class="filter-input col-span-2" placeholder="🔍 بحث (رقم/اسم/محتوى)..." x-model="search">
+    <select class="filter-input" x-model="filterSeverity">
+      <option value="">كل الخطورات</option>
+      <option value="critical">🔴 حرج</option>
+      <option value="high">🟠 عالي</option>
+      <option value="medium">🟡 متوسط</option>
+    </select>
+    <select class="filter-input" x-model="filterType">
+      <option value="">كل الأنواع</option>
+      <template x-for="t in issueTypes" :key="t.key">
+        <option :value="t.key" x-text="t.label + ' (' + t.count + ')'"></option>
+      </template>
+    </select>
+    <select class="filter-input" x-model="filterAgent">
+      <option value="">كل الـ Agents</option>
+      <template x-for="a in agentNames" :key="a">
+        <option :value="a" x-text="a"></option>
+      </template>
+    </select>
+    <select class="filter-input" x-model="filterChannel">
+      <option value="">كل القنوات</option>
+      <option value="Channel::Whatsapp">WhatsApp</option>
+      <option value="Channel::WebWidget">WebWidget</option>
+      <option value="Channel::Instagram">Instagram</option>
+    </select>
+  </div>
+
+  <!-- Table -->
+  <div class="overflow-auto scrollbar" style="max-height:700px">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>المحادثة</th>
+          <th>الخطورة</th>
+          <th>نوع المشكلة</th>
+          <th>Agent</th>
+          <th>القناة</th>
+          <th>التاريخ</th>
+          <th>الحالة</th>
+          <th>تفاصيل</th>
+          <th>إجراء</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="(issue, idx) in filtered.slice(0, 500)" :key="idx">
+          <tr>
+            <td class="mono text-[var(--text-muted)] text-xs" x-text="idx + 1"></td>
+            <td>
+              <div class="font-bold mono">#<span x-text="issue.display_id"></span></div>
+              <div class="text-[10px] text-[var(--text-muted)] mt-0.5 truncate" style="max-width:140px" x-text="issue.contact || 'anonymous'"></div>
+            </td>
+            <td>
+              <span class="badge" :class="'severity-' + issue.severity">
+                <span x-text="issue.severity === 'critical' ? '🔴 حرج' : issue.severity === 'high' ? '🟠 عالي' : '🟡 متوسط'"></span>
+              </span>
+            </td>
+            <td>
+              <div class="text-xs font-semibold" x-text="issue.issue_label"></div>
+              <div class="text-[10px] text-[var(--text-muted)] mono mt-0.5" x-text="issue.issue_type"></div>
+            </td>
+            <td class="text-xs" x-text="issue.agent"></td>
+            <td>
+              <span class="chip" x-text="issue.channel.replace('Channel::','')"></span>
+            </td>
+            <td class="mono text-[11px] text-[var(--text-muted)]" x-text="issue.created_at"></td>
+            <td>
+              <span class="badge"
+                    :class="issue.status === 0 ? 'severity-high' : issue.status === 1 ? 'severity-medium' : issue.status === 2 ? 'severity-high' : 'severity-medium'"
+                    style="background:transparent;border:1px solid currentColor">
+                <span x-text="statusLabel(issue.status)"></span>
+              </span>
+            </td>
+            <td style="max-width:300px">
+              <div x-show="issue.lifetime_min !== null && issue.lifetime_min !== undefined" class="text-[11px] text-[var(--text-muted)] mono mb-1">
+                <span x-text="formatTimeContext(issue)"></span>
+              </div>
+              <div x-show="issue.first_customer_msg" class="text-xs truncate-2 text-[var(--text-secondary)]" x-text="issue.first_customer_msg"></div>
+              <div x-show="issue.labels" class="mt-1">
+                <template x-for="l in (issue.labels || '').split(',').filter(Boolean).slice(0,3)" :key="l">
+                  <span class="chip" x-text="l.trim()"></span>
+                </template>
+              </div>
+            </td>
+            <td>
+              <a class="conv-link" :href="data.frontend_url + '/app/accounts/' + data.account_id + '/conversations/' + issue.display_id" target="_blank">
+                فتح ↗
+              </a>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="filtered.length > 500" class="text-center py-4 text-sm text-[var(--text-muted)]">
+      عرض أول 500 من <span class="mono" x-text="filtered.length"></span> · استخدم الفلاتر لتضييق النتائج
+    </div>
+    <div x-show="filtered.length === 0" class="text-center py-12 text-[var(--text-muted)]">
+      لا توجد نتائج تطابق الفلاتر
+    </div>
+  </div>
+</section>
+
+<!-- ===== STRATEGIC RECOMMENDATIONS ===== -->
+<section class="panel p-6">
+  <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+    <span class="text-2xl">🎯</span>
+    <span>التوصيات الاستراتيجية لتحسين خدمة العملاء</span>
+  </h2>
+
+  <div class="space-y-3">
+    <!-- Priority 1 -->
+    <details class="card p-4" open>
+      <summary class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <span class="badge severity-critical">🔴 فوري — هذا الأسبوع</span>
+          <span class="font-bold">1. إيقاف Auto-resolve على WebWidget</span>
+        </div>
+        <span class="text-xs text-[var(--text-muted)]">تأثير: منع فقدان ~22 عميل/شهر</span>
+      </summary>
+      <div class="mt-3 pr-4 text-sm text-[var(--text-secondary)] leading-7 border-r-2 border-[var(--accent-red)]">
+        <p class="mb-2"><strong>المشكلة:</strong> 21 محادثة WebWidget تُغلق تلقائياً خلال 0-9 دقائق بدون رد بشري — عملاء يطرحون أسئلة بيع مهمة ("كم مدة التوصيل؟"، "كراسي قيمنق") ويُهملون.</p>
+        <p class="mb-2"><strong>الحل التقني:</strong></p>
+        <ul class="list-disc mr-6 mb-2 space-y-1">
+          <li>Chatwoot Admin → Automation Rules → تعطيل أي قاعدة "auto-resolve" على WebWidget</li>
+          <li>SLA Rule جديدة: WebWidget يستحق أول رد بشري خلال 5 دقائق في الدوام و 30 دقيقة خارجه</li>
+          <li>Macro تلقائية: "شكراً لتواصلك. عاد لك ممثل من فريقنا خلال دقائق." بدلاً من الإغلاق</li>
+        </ul>
+        <p class="mb-2"><strong>المتابعة:</strong> راجع 22 محادثة المُغلقة وتواصل مع العملاء يدوياً — بعضهم قد يكون عميل محتمل بقيمة عالية.</p>
+      </div>
+    </details>
+
+    <!-- Priority 2 -->
+    <details class="card p-4" open>
+      <summary class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <span class="badge severity-critical">🔴 فوري — حماية قانونية</span>
+          <span class="font-bold">2. حماية بيانات IBAN/البنوك (PDPL Compliance)</span>
+        </div>
+        <span class="text-xs text-[var(--text-muted)]">تأثير: تجنب غرامة PDPL سعودية محتملة</span>
+      </summary>
+      <div class="mt-3 pr-4 text-sm text-[var(--text-secondary)] leading-7 border-r-2 border-[var(--accent-red)]">
+        <p class="mb-2"><strong>المشكلة:</strong> 6 محادثات في مايو فقط فيها IBAN كامل + رقم حساب + اسم عميل في شات WhatsApp/WebWidget. يحفظ في الـ DB بدون تشفير. انتهاك صريح لنظام حماية البيانات الشخصية السعودي.</p>
+        <p class="mb-2"><strong>الحل التقني:</strong></p>
+        <ul class="list-disc mr-6 mb-2 space-y-1">
+          <li>Macro فوري للـ refund: "نأسف لتأخر طلبك، لحماية بياناتك يرجى تعبئة النموذج الآمن: <code class="bg-[var(--bg-elevated)] px-2 py-0.5 rounded mono text-xs">qaydao.com/refund-form</code>"</li>
+          <li>إنشاء نموذج HyperPay/Google Form مع SSL ليرسل البيانات إلى supply@ مباشرة</li>
+          <li>Automation Rule: محادثة فيها regex <code class="bg-[var(--bg-elevated)] px-1 mono text-xs">SA[0-9 ]{20,}</code> → تنبيه فوري + توجيه</li>
+          <li>تشفير حقول IBAN في DB قاعدة البيانات للتذاكر الموجودة (PostgreSQL pgcrypto)</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Priority 3 -->
+    <details class="card p-4" open>
+      <summary class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <span class="badge severity-critical">🔴 فوري — عبء العمل</span>
+          <span class="font-bold">3. إعادة توزيع عبء شيماء</span>
+        </div>
+        <span class="text-xs text-[var(--text-muted)]">تأثير: تقليل متوسط الرد من 222 إلى < 90 دقيقة</span>
+      </summary>
+      <div class="mt-3 pr-4 text-sm text-[var(--text-secondary)] leading-7 border-r-2 border-[var(--accent-red)]">
+        <p class="mb-2"><strong>المشكلة:</strong> شيماء تتولى 547 محادثة (40% من الإجمالي) بمتوسط أول رد <strong>222 دقيقة (3.7 ساعة)</strong> — هذا يعكس overload لا قصور أداء. أسوأ ردود junk ("." و "s5") أيضاً منها، علامة إجهاد.</p>
+        <p class="mb-2"><strong>الحل التشغيلي:</strong></p>
+        <ul class="list-disc mr-6 mb-2 space-y-1">
+          <li>إعادة Round-Robin: مروة (45 دق) تتولى 60% من المحادثات الجديدة + Fai 25% + شيماء 15% فقط</li>
+          <li>توظيف agent إضافي (4th) — احتساب ROI: تقليل refund rate بنسبة 20% يغطي راتب الـ agent</li>
+          <li>Macro Library: استبدال "s5"، "."، "Q_PLUS" بـ Canned Responses احترافية موحدة</li>
+          <li>تدريب شيماء على قالب مروة الترحيبي: <em>"اهلا معك مروة من خدمة عملاء كواي داو، كيف اقدر اساعدك؟"</em></li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Priority 4 -->
+    <details class="card p-4">
+      <summary class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <span class="badge severity-high">🟠 خلال أسبوعين</span>
+          <span class="font-bold">4. إصلاح Bug "تم حذف هذه الرسالة" المكرر</span>
+        </div>
+        <span class="text-xs text-[var(--text-muted)]">16 حالة تكرار في مايو · يخدش تجربة العميل</span>
+      </summary>
+      <div class="mt-3 pr-4 text-sm text-[var(--text-secondary)] leading-7 border-r-2 border-[var(--accent-amber)]">
+        <p class="mb-2">رسالة "تم حذف هذه الرسالة" تُرسل مرات متعددة (في محادثة #1452 تكررت 6 مرات!). كذلك Macros تسويقية تُرسل 3 مرات (#1029).</p>
+        <p class="mb-2"><strong>التحقيق:</strong></p>
+        <ul class="list-disc mr-6 space-y-1">
+          <li>فحص الـ custom patches في <code class="bg-[var(--bg-elevated)] px-1 mono text-xs">/root/chat-qaydao/patches/jobs/qaydao_retry_unassigned_conversations_job.rb</code></li>
+          <li>فحص Evolution API webhook — احتمال duplicate dispatch</li>
+          <li>إضافة idempotency key لإرسال الرسائل بناءً على hash(content + timestamp)</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Priority 5 -->
+    <details class="card p-4">
+      <summary class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <span class="badge severity-high">🟠 خلال أسبوعين</span>
+          <span class="font-bold">5. متابعة المحادثات المعلقة (Stale Pipeline)</span>
+        </div>
+        <span class="text-xs text-[var(--text-muted)]">48 محادثة معلقة > 5 أيام · فرص بيع وشكاوى</span>
+      </summary>
+      <div class="mt-3 pr-4 text-sm text-[var(--text-secondary)] leading-7 border-r-2 border-[var(--accent-amber)]">
+        <ul class="list-disc mr-6 space-y-1">
+          <li><strong>أولوية فورية:</strong> محادثة #651 (label: "شكوى") معلقة 12 يوم بدون نشاط</li>
+          <li>Automation Rule: pending > 48 ساعة → رسالة آلية ودية للعميل + تذكير للـ agent</li>
+          <li>Dashboard مخصص: قائمة الـ pending لكل agent مع عمر كل محادثة + زر "متابعة الآن"</li>
+          <li>تصنيف "عملاء_محتمل" المعلقة كأولوية تجارية (#368, #665) — رفعهم لـ Sales</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Priority 6 -->
+    <details class="card p-4">
+      <summary class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <span class="badge severity-high">🟠 خلال أسبوعين</span>
+          <span class="font-bold">6. حماية الإيميلات الشخصية للموظفين</span>
+        </div>
+        <span class="text-xs text-[var(--text-muted)]">10 محادثات · مخاطر إيميل شخصي للعميل</span>
+      </summary>
+      <div class="mt-3 pr-4 text-sm text-[var(--text-secondary)] leading-7 border-r-2 border-[var(--accent-amber)]">
+        <ul class="list-disc mr-6 space-y-1">
+          <li><code class="bg-[var(--bg-elevated)] px-1 mono text-xs">jehad@qaydao.com</code> أُرسل لعميلين في رد عام — يجب استبداله بـ <code class="bg-[var(--bg-elevated)] px-1 mono text-xs">supply@qaydao.com</code> (إيميل قسم)</li>
+          <li>سياسة: لا إيميلات أسماء أشخاص في الـ Public Replies — فقط إيميلات أقسام رسمية</li>
+          <li>Automation: regex على <code class="bg-[var(--bg-elevated)] px-1 mono text-xs">[a-z]+@qaydao\.com</code> في outgoing → تنبيه pre-send</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Priority 7 -->
+    <details class="card p-4">
+      <summary class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <span class="badge severity-high">🟠 خلال شهر</span>
+          <span class="font-bold">7. معالجة استياء "الشحن البحري"</span>
+        </div>
+        <span class="text-xs text-[var(--text-muted)]">السبب الجذري لـ 64 طلب استرجاع</span>
+      </summary>
+      <div class="mt-3 pr-4 text-sm text-[var(--text-secondary)] leading-7 border-r-2 border-[var(--accent-amber)]">
+        <p class="mb-2">معظم الشكاوى مرتبطة بـ <code class="bg-[var(--bg-elevated)] px-1 mono text-xs">قيد_الشحن_البحري</code> + <code class="bg-[var(--bg-elevated)] px-1 mono text-xs">استياء_لتأخر_الطلب</code>. تهديدات قانونية صريحة في #337, #342, #1242.</p>
+        <ul class="list-disc mr-6 space-y-1">
+          <li><strong>الشفافية:</strong> صفحة tracking عامة لكل طلب — تحديث آلي من نظام الشحن (ETA, container ID, port)</li>
+          <li><strong>التواصل الاستباقي:</strong> رسالة WhatsApp تلقائية كل 7 أيام لكل عميل شحنة بحرية: "شحنتك في الميناء/خرجت/تصل خلال X يوم"</li>
+          <li><strong>تعويض استباقي:</strong> كود خصم Q_PLUS لكل عميل تأخرت شحنته > 60 يوم — قبل أن يطلب الاسترجاع</li>
+          <li><strong>إفصاح في الموقع:</strong> ETA واضح على صفحة المنتج (مثلاً "تصنيع 30 يوم + شحن بحري 45-60 يوم")</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Priority 8 -->
+    <details class="card p-4">
+      <summary class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <span class="badge severity-medium">🟡 شهرياً</span>
+          <span class="font-bold">8. أتمتة هذا التقرير</span>
+        </div>
+        <span class="text-xs text-[var(--text-muted)]">QA Dashboard دائم</span>
+      </summary>
+      <div class="mt-3 pr-4 text-sm text-[var(--text-secondary)] leading-7 border-r-2 border-[var(--accent-blue)]">
+        <ul class="list-disc mr-6 space-y-1">
+          <li>تشغيل الـ SQL Pipeline يومياً عبر cron → تحديث <code class="bg-[var(--bg-elevated)] px-1 mono text-xs">may_data.json</code></li>
+          <li>نشر Dashboard على <code class="bg-[var(--bg-elevated)] px-1 mono text-xs">qa.qaydao.com</code> مع authentication</li>
+          <li>تنبيهات: rule جديدة في Chatwoot → webhook إلى Slack لكل issue حرج جديد</li>
+          <li>تقرير شهري بـ Email للإدارة: PDF auto-generated من نفس البيانات</li>
+        </ul>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer class="text-center py-6 text-xs text-[var(--text-muted)]">
+  <div>QAYDAO QA Audit System · مُولّد من PostgreSQL مباشرة</div>
+  <div class="mono mt-1" x-text="'Generated: ' + data.generated_at"></div>
+</footer>
+
+</div>
+</div>
+
+<script>
+const DASHBOARD_DATA = __DATA_PLACEHOLDER__;
+
+function dashboard() {
+  return {
+    data: DASHBOARD_DATA,
+    search: '',
+    filterSeverity: '',
+    filterType: '',
+    filterAgent: '',
+    filterChannel: '',
+
+    init() {
+      this.$nextTick(() => this.renderCharts());
+    },
+
+    get counts() {
+      const c = {};
+      this.data.issues.forEach(i => { c[i.issue_type] = (c[i.issue_type]||0)+1; });
+      return c;
+    },
+
+    get issueTypes() {
+      const labels = {
+        ghost_closure: 'إغلاق فوري دون رد',
+        unassigned_no_reply: 'بدون مالك ولا رد',
+        pdpl_iban: 'IBAN في شات (PDPL)',
+        sla_breach: 'تأخر أول رد (SLA)',
+        stale: 'معلّقة > 5 أيام',
+        angry_customer: 'غضب/استرجاع',
+        junk_reply: 'رد قصير غامض',
+        email_leak: 'تسريب إيميل',
+        duplicate_msg: 'رسائل مكررة'
+      };
+      const counts = this.counts;
+      return Object.keys(counts).map(k => ({
+        key: k, label: labels[k] || k, count: counts[k]
+      })).sort((a,b) => b.count - a.count);
+    },
+
+    get agentNames() {
+      return [...new Set(this.data.issues.map(i => i.agent))].sort();
+    },
+
+    get filtered() {
+      const s = this.search.toLowerCase();
+      return this.data.issues.filter(i => {
+        if (this.filterSeverity && i.severity !== this.filterSeverity) return false;
+        if (this.filterType && i.issue_type !== this.filterType) return false;
+        if (this.filterAgent && i.agent !== this.filterAgent) return false;
+        if (this.filterChannel && i.channel !== this.filterChannel) return false;
+        if (s) {
+          const hay = (i.display_id + ' ' + (i.contact||'') + ' ' + (i.first_customer_msg||'') + ' ' + (i.labels||'') + ' ' + i.agent).toLowerCase();
+          if (!hay.includes(s)) return false;
+        }
+        return true;
+      }).sort((a,b) => a.severity_rank - b.severity_rank);
+    },
+
+    statusLabel(s) {
+      return s === 0 ? '🟡 مفتوحة' : s === 1 ? '✅ محلولة' : s === 2 ? '🔵 معلقة' : s === 3 ? '😴 مؤجلة' : '?';
+    },
+
+    formatTimeContext(issue) {
+      if (issue.issue_type === 'sla_breach') return 'تأخر: ' + issue.lifetime_min + ' دق';
+      if (issue.issue_type === 'ghost_closure') return 'عمر: ' + issue.lifetime_min + ' دق';
+      if (issue.issue_type === 'unassigned_no_reply') return 'منذ: ' + issue.lifetime_min + ' دق';
+      if (issue.issue_type === 'stale') return 'راكدة: ' + issue.lifetime_min + ' يوم';
+      return '';
+    },
+
+    renderCharts() {
+      const fontFamily = 'Cairo, sans-serif';
+      Chart.defaults.font.family = fontFamily;
+      Chart.defaults.color = '#9ca8c4';
+
+      // Issues distribution
+      const it = this.issueTypes;
+      new Chart(document.getElementById('issuesChart'), {
+        type: 'doughnut',
+        data: {
+          labels: it.map(t => t.label),
+          datasets: [{
+            data: it.map(t => t.count),
+            backgroundColor: ['#ef4444','#f59e0b','#dc2626','#fb923c','#fbbf24','#3b82f6','#a78bfa','#8b5cf6','#60a5fa'],
+            borderColor: '#1a2234',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { padding: 8, font: {size: 10} } }
+          }
+        }
+      });
+
+      // Agents performance
+      const ags = this.data.agents.filter(a => a.conversations > 20);
+      new Chart(document.getElementById('agentsChart'), {
+        type: 'bar',
+        data: {
+          labels: ags.map(a => a.name),
+          datasets: [
+            { label: 'محادثات', data: ags.map(a => a.conversations), backgroundColor: '#10b981', borderRadius: 6, yAxisID: 'y' },
+            { label: 'متوسط الرد (دق)', data: ags.map(a => a.avg_first_reply_min), backgroundColor: '#f59e0b', borderRadius: 6, yAxisID: 'y1' }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, position: 'right', grid: {color:'#2d3958'}, ticks: {color:'#9ca8c4'} },
+            y1: { beginAtZero: true, position: 'left', grid: {display:false}, ticks: {color:'#f59e0b'} },
+            x: { grid: {display:false}, ticks: {color:'#9ca8c4'} }
+          },
+          plugins: { legend: { labels: {color:'#e5e9f5'} } }
+        }
+      });
+
+      // Channels
+      const ch = this.data.channels;
+      new Chart(document.getElementById('channelsChart'), {
+        type: 'polarArea',
+        data: {
+          labels: ch.map(c => c.channel.replace('Channel::','')),
+          datasets: [{
+            data: ch.map(c => c.total),
+            backgroundColor: ['rgba(16,185,129,0.6)','rgba(59,130,246,0.6)','rgba(168,85,247,0.6)'],
+            borderColor: ['#10b981','#3b82f6','#a78bfa'],
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { r: { grid: {color:'#2d3958'}, ticks: {display:false}, pointLabels: {color:'#e5e9f5'} } },
+          plugins: { legend: { position: 'bottom', labels: {padding:8, font:{size:11}} } }
+        }
+      });
+    }
+  }
+}
+</script>
+
+</body>
+</html>

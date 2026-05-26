@@ -21,3 +21,8 @@ captain-config/backups/
 test_*.rb
 captain-config/MAINTENANCE
 alert.env
+captain-config/.captain_inboxes_before_pause
+qa-audit/logs/
+qa-audit/reports/individual/
+qa-audit/reports/MAY_2026_FULL_AUDIT.md
+qa-audit/reports/dashboard.html
