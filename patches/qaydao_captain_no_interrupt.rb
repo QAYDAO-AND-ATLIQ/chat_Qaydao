@@ -1,4 +1,4 @@
-# QAYDAO — two safety patches on Captain's ResponseBuilderJob:
+# QAYDAO — three safety patches on Captain's ResponseBuilderJob:
 #
 #  (A) NO-INTERRUPT: don't let QAYDAO AI reply after a REAL human agent has
 #      replied (proven on conv #888). "Real human reply" = outgoing, User,
@@ -11,8 +11,13 @@
 #      (seen on conv #2106). Before creating the outgoing message we unwrap any
 #      nested {"response":...} envelope and keep only the real text.
 #
-# Both are idempotent, fail open, and load as a bind-mounted initializer on web
-# + sidekiq, surviving restarts/recreation.
+#  (C) ESCALATE PRIORITY ON HANDOFF: when QAYDAO AI hands a conversation to a
+#      human, raise its priority to urgent so it stands out (red badge) and also
+#      surfaces in the "🔴 تذاكر عاجلة غير معيّنة" view — strict follow-up after
+#      the holiday. Never downgrades a priority an agent already set higher.
+#
+# All idempotent, fail open, and load as a bind-mounted initializer on web +
+# sidekiq, surviving restarts/recreation.
 
 Rails.application.config.to_prepare do
   next unless defined?(Captain::Conversation::ResponseBuilderJob)
@@ -78,8 +83,27 @@ Rails.application.config.to_prepare do
         Rails.logger.warn("[qaydao-unwrap] failed (conv ##{@conversation&.id}): #{e.message}")
         text
       end
+
+      # ── (C) escalate priority to urgent on handoff ────────────────────
+      def create_handoff_message(*args, **kwargs)
+        super
+        qaydao_escalate_priority_on_handoff
+      end
+
+      def qaydao_escalate_priority_on_handoff
+        return unless @conversation
+        current = Conversation.priorities[@conversation.priority].to_i # nil → 0
+        urgent  = Conversation.priorities['urgent']
+        # ارفع فقط إن لم يكن الموظف قد ضبط أولوية أعلى/مساوية (لا نخفّض شيئاً)
+        if @conversation.priority.nil? || current < urgent
+          @conversation.update!(priority: :urgent)
+          Rails.logger.info("[qaydao-escalate] conv ##{@conversation.id} priority → urgent on QAYDAO AI handoff")
+        end
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-escalate] failed for conv ##{@conversation&.id}: #{e.message}")
+      end
     end
     Captain::Conversation::ResponseBuilderJob.prepend(mod)
-    Rails.logger.info('[qaydao-patch] no-interrupt + json-unwrap applied to Captain::Conversation::ResponseBuilderJob')
+    Rails.logger.info('[qaydao-patch] no-interrupt + json-unwrap + priority-escalate applied to Captain::Conversation::ResponseBuilderJob')
   end
 end
