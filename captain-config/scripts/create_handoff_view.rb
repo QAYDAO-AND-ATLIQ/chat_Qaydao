@@ -13,7 +13,7 @@ query = {
 }
 
 # موظفو خدمة العملاء + المشرفون (نفس من لديهم views حالياً)
-target_user_ids = [2, 3, 5, 6, 7, 8, 9]
+target_user_ids = AccountUser.where(account_id: account.id).pluck(:user_id) - [11]
 created = 0; skipped = 0
 
 target_user_ids.each do |uid|
