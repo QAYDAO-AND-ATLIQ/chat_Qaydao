@@ -73,17 +73,24 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
 
   try {
     // PostgreSQL trigram search - much better than SQLite FTS for Arabic
+    // DISTINCT ON (normalized name) collapses duplicate catalog entries
+    // (same product uploaded multiple times in Salla with different IDs).
     const rows = await db.all(`
-      SELECT id, salla_id, sku, name, description, category_path, category_main,
-             price_regular, price_discounted, status, quantity_available,
-             promo_label, image_url, product_url, variants_json,
-             similarity(name, $1) AS name_score
-      FROM master_products
-      WHERE deleted_at IS NULL
-        AND is_active = TRUE
-        AND (name % $1 OR name ILIKE $2 OR description ILIKE $2)
-        AND ($3::TEXT IS NULL OR category_path ILIKE '%' || $3 || '%')
-        AND ($4::NUMERIC IS NULL OR price_regular <= $4)
+      SELECT * FROM (
+        SELECT DISTINCT ON (LOWER(TRIM(name)))
+               id, salla_id, sku, name, description, category_path, category_main,
+               price_regular, price_discounted, status, quantity_available,
+               promo_label, image_url, product_url, variants_json,
+               similarity(name, $1) AS name_score
+        FROM master_products
+        WHERE deleted_at IS NULL
+          AND is_active = TRUE
+          AND (name % $1 OR name ILIKE $2 OR description ILIKE $2)
+          AND ($3::TEXT IS NULL OR category_path ILIKE '%' || $3 || '%')
+          AND ($4::NUMERIC IS NULL OR price_regular <= $4)
+        ORDER BY LOWER(TRIM(name)), similarity(name, $1) DESC NULLS LAST,
+                 quantity_available DESC NULLS LAST
+      ) sub
       ORDER BY name_score DESC NULLS LAST, price_regular ASC
       LIMIT $5
     `, [q, `%${q}%`, category, maxPrice, limit]);
@@ -94,8 +101,8 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
       name: p.name,
       description: (p.description || '').slice(0, 200),
       category: p.category_main,
-      price: parseFloat(p.price_discounted || p.price_regular),
-      original_price: p.price_discounted ? parseFloat(p.price_regular) : null,
+      price: Math.round(parseFloat(p.price_discounted || p.price_regular)),
+      original_price: p.price_discounted ? Math.round(parseFloat(p.price_regular)) : null,
       status: p.status,
       type: p.promo_label,
       image: p.image_url,
@@ -910,6 +917,9 @@ app.get("/products/qa-audit", requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "public", "qa-audit", "index.html"));
 });
 
+
+// ─── Assign-on-Reply webhook (auto-assign conversation to agent who replies) ───
+require('./assign-on-reply').register(app);
 
 app.listen(PORT, '127.0.0.1', async () => {
   console.log(`✅ QAYDAO Master Catalog on http://127.0.0.1:${PORT}/products`);
