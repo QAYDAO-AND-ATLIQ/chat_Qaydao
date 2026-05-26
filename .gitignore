@@ -26,3 +26,9 @@ qa-audit/logs/
 qa-audit/reports/individual/
 qa-audit/reports/MAY_2026_FULL_AUDIT.md
 qa-audit/reports/dashboard.html
+
+# QAYDAO: backup/snapshot files (never commit)
+*.backup
+*.backup-*
+*.bak-*
+*.pre-*
