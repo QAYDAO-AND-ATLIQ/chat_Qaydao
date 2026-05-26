@@ -53,6 +53,7 @@ services:
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
       - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
       - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
+      - ./patches/qaydao_captain_no_interrupt.rb:/app/config/initializers/qaydao_captain_no_interrupt.rb:ro
 
   chatwoot-sidekiq:
     image: chatwoot/chatwoot:v4.13.0
@@ -80,6 +81,7 @@ services:
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
       - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
       - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
+      - ./patches/qaydao_captain_no_interrupt.rb:/app/config/initializers/qaydao_captain_no_interrupt.rb:ro
 
 networks:
   chatwoot-internal:
