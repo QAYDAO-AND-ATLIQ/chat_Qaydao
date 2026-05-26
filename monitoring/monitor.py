@@ -410,22 +410,33 @@ def mark_alert_sent(check_id: str, redis_client) -> None:
 # ──────────────── Main ────────────────
 
 def check_open_backlog() -> tuple[str, bool, str]:
-    """Alert if too many ACTIVE conversations (last 24h) are sitting open.
-    Counts only recently-active open chats, ignoring historical backlog."""
+    """Alert only on conversations that are GENUINELY WAITING FOR A REPLY.
+    The old metric counted every open chat (incl. ones agents are actively
+    handling + automated ones), which ballooned at midnight when the 24h window
+    swept the whole day's peak (false 122 alert). This counts only chats where:
+      - status is open(0) or pending(2)
+      - active in the last 24h
+      - the LAST message is incoming (customer is waiting), and
+      - it has been waiting > 30 minutes with no reply.
+    That is the real, actionable backlog."""
     val = db_query(
-        "SELECT COUNT(*) FROM conversations WHERE account_id=1 AND status=0 "
-        "AND last_activity_at > NOW() - INTERVAL '24 hours';"
+        "SELECT COUNT(*) FROM conversations c "
+        "WHERE c.account_id=1 AND c.status IN (0,2) "
+        "AND c.last_activity_at > NOW() - INTERVAL '24 hours' "
+        "AND c.last_activity_at < NOW() - INTERVAL '30 minutes' "
+        "AND (SELECT message_type FROM messages m WHERE m.conversation_id=c.id "
+        "     AND m.message_type IN (0,1) ORDER BY m.created_at DESC LIMIT 1) = 0;"
     )
     try:
         n = int(val)
     except (ValueError, TypeError):
         return "open_backlog", True, "skipped (parse error)"
-    threshold = 80
+    threshold = 40
     if n <= threshold:
-        return "open_backlog", True, f"{n} محادثة مفتوحة نشطة (ضمن الحد)"
+        return "open_backlog", True, f"{n} محادثة تنتظر رداً (ضمن الحد)"
     return "open_backlog", False, (
-        f"تكدّس محادثات: {n} محادثة مفتوحة نشطة خلال 24 ساعة (الحد {threshold}).\n"
-        f"قد يحتاج QAYDAO AI مراجعة، أو هناك أسئلة متكررة لا يجيب عنها."
+        f"تكدّس محادثات: {n} محادثة تنتظر رداً فعلياً منذ أكثر من 30 دقيقة (الحد {threshold}).\n"
+        f"قد يحتاج QAYDAO AI مراجعة، أو هناك أسئلة متكررة لا يجيب عنها، أو نقص في فريق خدمة العملاء."
     )
 
 
