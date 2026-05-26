@@ -234,21 +234,19 @@ def check_captain_runtime_errors() -> tuple[str, bool, str]:
 
 
 def check_captain_features_enabled() -> tuple[str, bool, str]:
-    """Both V1 (captain_integration) and V2 must be enabled."""
-    answer = rails_eval(
-        "[Account.find(1).feature_enabled?('captain_integration'), "
-        "Account.find(1).feature_enabled?('captain_integration_v2')].join('|')"
-    )
-    if not answer or "|" not in answer:
+    """QAYDAO AI runs on Captain V2 (AgentRunnerService + scenarios). Only V2 is
+    required; V1 (legacy captain_integration) is intentionally OFF — enabling it
+    risks the old V1 response path firing alongside V2 (double replies). So we
+    monitor V2 only: if V2 is on, QAYDAO AI is healthy regardless of V1."""
+    v2 = rails_eval("Account.find(1).feature_enabled?('captain_integration_v2')")
+    if not v2:
         return "captain_features", True, "skipped (parse error)"
-    v1, v2 = answer.split("|")
-    if v1.strip() == "true" and v2.strip() == "true":
-        return "captain_features", True, "V1 + V2 مفعّلان"
+    if v2.strip() == "true":
+        return "captain_features", True, "Captain V2 مفعّل (المحرّك الفعلي)"
     return "captain_features", False, (
-        f"إعدادات Captain مفقودة:\n"
-        f"  captain_integration (V1): {v1}\n"
-        f"  captain_integration_v2:   {v2}\n"
-        f"الأثر: FAQs مقفلة أو Captain لا يرد تلقائياً."
+        "Captain V2 (captain_integration_v2) معطّل!\n"
+        "QAYDAO AI لن يرد تلقائياً — يجب تفعيله فوراً عبر:\n"
+        "  Account.find(1).enable_features!('captain_integration_v2')"
     )
 
 
