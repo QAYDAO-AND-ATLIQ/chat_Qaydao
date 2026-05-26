@@ -1,21 +1,18 @@
-# QAYDAO — prevent QAYDAO AI (Captain) from interrupting a human agent.
+# QAYDAO — two safety patches on Captain's ResponseBuilderJob:
 #
-# Problem: Captain replies to any `pending` conversation. When a human agent
-# (شيماء/مروة/Fai/Omar...) had already replied manually and the customer later
-# sends another message, Captain would jump in on top of the agent (proven on
-# conv #888 where مروة handled it, then Captain replied 17 days later).
+#  (A) NO-INTERRUPT: don't let QAYDAO AI reply after a REAL human agent has
+#      replied (proven on conv #888). "Real human reply" = outgoing, User,
+#      not private, NOT a WhatsApp template (the automated OOO/greeting), and
+#      not a 🚨 monitor alert / 📲 widget_bridge log.
 #
-# Fix: before Captain answers, check whether a REAL human agent has replied in
-# this conversation. If so, stay silent and leave it to the human.
+#  (B) UNWRAP NESTED JSON: sometimes a scenario sub-agent returns its answer as
+#      a raw JSON string like {"response":"...","reasoning":"..."} (occasionally
+#      duplicated/concatenated), which then got sent to the customer verbatim
+#      (seen on conv #2106). Before creating the outgoing message we unwrap any
+#      nested {"response":...} envelope and keep only the real text.
 #
-# "Real human reply" = outgoing, sender_type User, not private, AND
-#   - NOT a WhatsApp template (additional_attributes has no template_params) — those are
-#     the automated OOO / greeting messages, which must NOT silence Captain, and
-#   - does not start with 🚨 (monitor system alerts) or 📲 (widget_bridge auto-send logs),
-#     which are system notes posted as User messages, not agent replies.
-#
-# This is idempotent and safe: if Captain hasn't replied yet and no human has
-# either, behaviour is unchanged. Loaded as an initializer; survives restarts.
+# Both are idempotent, fail open, and load as a bind-mounted initializer on web
+# + sidekiq, surviving restarts/recreation.
 
 Rails.application.config.to_prepare do
   next unless defined?(Captain::Conversation::ResponseBuilderJob)
@@ -24,6 +21,7 @@ Rails.application.config.to_prepare do
     mod = Module.new do
       def self.name = 'QaydaoNoInterrupt'
 
+      # ── (A) no-interrupt ──────────────────────────────────────────────
       def perform(conversation, assistant)
         if qaydao_human_agent_replied?(conversation)
           Rails.logger.info("[qaydao-no-interrupt] Captain skipped conv ##{conversation.id}: human agent already replied")
@@ -42,10 +40,46 @@ Rails.application.config.to_prepare do
         end
       rescue StandardError => e
         Rails.logger.warn("[qaydao-no-interrupt] check failed for conv ##{conversation&.id}: #{e.message}")
-        false # على الخطأ: لا نمنع Captain (نفشل بأمان)
+        false
+      end
+
+      # ── (B) unwrap nested JSON before sending ─────────────────────────
+      def create_messages
+        if @response.is_a?(Hash) && @response['response'].is_a?(String)
+          cleaned = qaydao_unwrap_nested_json(@response['response'])
+          if cleaned != @response['response']
+            Rails.logger.info("[qaydao-unwrap] unwrapped nested JSON in Captain reply (conv ##{@conversation&.id})")
+            @response = @response.merge('response' => cleaned)
+          end
+        end
+        super
+      end
+
+      # Peels up to 3 levels of {"response":"...","reasoning":"..."} wrapping.
+      # Handles valid JSON, and the broken duplicated/concatenated case
+      # ({...}{...}) via a regex fallback that grabs the first "response" value.
+      def qaydao_unwrap_nested_json(text)
+        t = text.to_s.strip
+        3.times do
+          break unless t.start_with?('{') && t.include?('"response"')
+          begin
+            parsed = JSON.parse(t)
+            break unless parsed.is_a?(Hash) && parsed.key?('response')
+            t = parsed['response'].to_s.strip
+          rescue JSON::ParserError
+            m = t.match(/"response"\s*:\s*"((?:[^"\\]|\\.)*)"/m)
+            break unless m
+            t = m[1].gsub('\\n', "\n").gsub('\\"', '"').gsub('\\\\', '\\').strip
+            break
+          end
+        end
+        t
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-unwrap] failed (conv ##{@conversation&.id}): #{e.message}")
+        text
       end
     end
     Captain::Conversation::ResponseBuilderJob.prepend(mod)
-    Rails.logger.info('[qaydao-no-interrupt] patch applied to Captain::Conversation::ResponseBuilderJob')
+    Rails.logger.info('[qaydao-patch] no-interrupt + json-unwrap applied to Captain::Conversation::ResponseBuilderJob')
   end
 end
