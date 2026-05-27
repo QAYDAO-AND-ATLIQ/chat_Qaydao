@@ -32,3 +32,4 @@ qa-audit/reports/dashboard.html
 *.backup-*
 *.bak-*
 *.pre-*
+monitoring/holiday_*.json

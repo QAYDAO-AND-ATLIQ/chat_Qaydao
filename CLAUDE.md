@@ -102,6 +102,21 @@ docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
 
 ## Change Log
 
+### 2026-05-27 — Eid holiday: AI honesty + urgent escalation
+**Problem:** During Eid (human team away until Sat 30 May), QAYDAO AI handed off human-only matters (refund/return/delay/B2B) promising "سيتواصل معك مختص قريباً / في أقرب وقت" while no human was available — customers waited 10h–34h. Scenario #4 also said "بعد التحويل لا ترد" → silence.
+
+**Root cause:** The false-promise text lived in `captain-config/scripts/seed_captain.rb` Scenario #2 (order-not-found) & #4 (handoff), NOT the main instruction. Also `apply.sh` (6-hourly self-heal) was failing silently (`set -u` unbound var) so config never self-healed.
+
+**Changes (all in source-of-truth → cron-proof):**
+- `seed_captain.rb`: prepended a HOLIDAY block to `canonical_instruction`; rewrote Scenario #2 not-found message (KEPT trigger phrase "تم رفع طلبك لخدمة العملاء للمراجعة" needed by automation rule #6) and Scenario #4 handoff message to honest "الفريق يعود السبت ٣٠ مايو" with no "قريباً"; replaced Scenario #4 "do not reply" rule with "keep helping".
+- `apply.sh`: fixed unbound-variable bug (split prefix assignment from command) — self-heal restored & verified end-to-end.
+- inbox 2 (email) `working_hours` mirrored to inbox 5 (closed Tue–Fri, open Sun/Mon/Sat) so the Eid OOO fires consistently on email too.
+- NEW `monitoring/holiday_escalation.py` + cron every 10 min: alerts Rami (Telegram @qaydaochatbot + Email via alert_rami.py) for any OPEN conversation where the customer has waited > 45 min; dedup via `holiday_escalated.json`; SELF-EXPIRES on 2026-05-30.
+- One-time honest reassurance message sent to 7 stuck open conversations (msg ids 45527–45533); tracked in `holiday_reassured.json`.
+
+**⚠ POST-EID TODO (after Sat 30 May 2026):** the HOLIDAY block does NOT auto-remove. Remove it from `seed_captain.rb` (3 spots marked with "إجازة العيد") + run `apply.sh`; remove the `holiday-escalation` cron line.
+
+
 ### 2026-05-03 — Unification & cross-channel visibility
 **Problem reported:** Tab "All" showed only some conversations (25 of 37). Employee reported assigned conversations being invisible across users.
 
