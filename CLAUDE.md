@@ -70,6 +70,7 @@ These are non-default decisions baked into `.env` and DB state. Document any cha
 - New agents must be added to all 4 inboxes on onboarding. Add to `setup_agents.rb` if creating one.
 
 ### Patches (vendored on top of upstream Chatwoot)
+- `patches/enterprise/app/services/captain/llm/system_prompts_service.rb` — bind-mounted (ro) into both web+sidekiq. Patches the Captain `[Task]` line so the assistant greets the customer by their first name (from `[Contact Information]`). **Re-apply/re-check on every Chatwoot upgrade** (upstream may change this file).
 - `patches/services/messages/in_reply_to_message_builder.rb` — bind-mounted read-only into `/app/...` for both `chatwoot-web` and `chatwoot-sidekiq`. Re-apply on every Chatwoot upgrade.
 
 ## Roles in this Account
@@ -101,6 +102,19 @@ docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
 - **`enterprise/`** code paths are loaded via `prepend_mod_with`. Custom roles only kick in for users with `role='agent' AND custom_role_id IS NOT NULL` — administrators bypass them entirely.
 
 ## Change Log
+
+### 2026-05-31 — Warehouse stock answers + AI quality + post-Eid cleanup
+**What:** QAYDAO AI can now answer real stock/availability and reply professionally.
+- **Stock tools:** added Captain custom tools `check_warehouse_stock` (→ cn.qaydao.com `/api/warehouse/public-availability` & `/public-search`) and `lookup_salla_product` (→ products `/api/links/stock-by-salla`, extracts `salla_id` from a product link). Customer gives a code/link/image-code → AI checks the real warehouse → "available, ships 3-7d" or "made-to-order 30-60d", and suggests in-stock alternatives. Images: Captain pipeline already forwards image attachments to gpt-4.1; instruction now reads codes / describes products from images.
+- **Product↔warehouse link:** new `product_warehouse_link` table in `qaydao_master` (70 auto-seeded by sku==code) + link API + linking UI in cn.qaydao.com `dashboard/warehouse` (for the ~247 codes whose sku≠warehouse code). `qaydao-products` `search_products` now sets `delivery_class` from REAL stock for linked products (safe fallback to heuristic if cn unreachable).
+- **🔴 Root bug fixed:** the Captain prompt template injects `config["instructions"]` (PLURAL) but the assistant stored `config["instruction"]` (SINGULAR) — so the entire custom instruction was NEVER reaching the LLM (prompt was ~3976 chars, none of our rules present). `seed_captain.rb` now sets BOTH keys → instruction is live (prompt ~12k chars). All custom rules (conciseness, escalation, stock, image, name) only started working after this fix.
+- **AI quality:** instruction rewritten for brevity (2-3 sentences, no filler), escalate-to-human on ambiguity/unfulfillable requests (e.g. "see fabric up close") with a short offer, and address the customer by first name.
+- **Name greeting:** enabled `feature_contact_attributes`; instruction alone was insufficient (upstream `[Task] Start by introducing yourself` suppressed it), so vendored-patched `system_prompts_service.rb` `[Task]` to greet by first name. Verified 4/4 → "أهلاً أبرار،...".
+- **Post-Eid cleanup:** removed the stale Eid-holiday block from `seed_captain.rb` (instruction + Scenario#2 not-found [trigger phrase kept] + working-hours + Scenario#4 handoff) and removed the `holiday-escalation` cron line. (Completes the 2026-05-27 POST-EID TODO.)
+
+**Verify:** `apply.sh`; Playground/WhatsApp send `15FKNZ063` → "متوفر، ٣-٧ أيام"; send a product link → made-to-order + alternatives; named contact → greeted by name.
+**Backups:** `seed_captain.rb.bak-*`, `docker-compose.yml.bak-sps-*`, products `server.js.bak-*`, cn `warehouse.py.bak-*`.
+
 
 ### 2026-05-27 — Eid holiday: AI honesty + urgent escalation
 **Problem:** During Eid (human team away until Sat 30 May), QAYDAO AI handed off human-only matters (refund/return/delay/B2B) promising "سيتواصل معك مختص قريباً / في أقرب وقت" while no human was available — customers waited 10h–34h. Scenario #4 also said "بعد التحويل لا ترد" → silence.
