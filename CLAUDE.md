@@ -409,3 +409,26 @@ cd /root/chat-qaydao && docker compose up -d --force-recreate chatwoot-web chatw
 # 3. Manually clean up Redis cron entry (if needed):
 docker exec chatwoot_sidekiq bundle exec rails runner "Sidekiq::Cron::Job.destroy('qaydao_retry_unassigned_conversations')"
 ```
+
+---
+
+## 2026-05-31 — Canonical Per-User Folders (Custom Views) — self-healing
+
+**Problem:** Chatwoot Folders (`custom_filters`) are **per-user and private** — never inherited. New agents (e.g. أميرة) and any DB restore start with **zero** folders, so saved views silently vanish for that user.
+
+**Root fix — folders are now code, not data:**
+- `captain-config/scripts/seed_folders.rb` — single source of truth for the **9 canonical folders**; guarantees **every** account user owns all of them. Idempotent, onboarding-safe, non-destructive (won't overwrite a user's edited query unless `FOLDERS_FORCE_SYNC=1`), self-healing.
+- `captain-config/scripts/apply_folders.sh` — copies the seed into `chatwoot_sidekiq` and runs it. Independent of Captain MAINTENANCE on purpose.
+- **Host cron** `10 */6 * * *` → survives `--force-recreate`, image upgrades, accidental deletion, and new-agent onboarding (auto-provisions all 9). Log: `/var/log/captain-folders.log`.
+
+**The 9 folders:** 🔴 عاجلة غير معيّنة · 📦 الشحن النشطة · 🔄 الإرجاع المعلّقة · 💼 VIP · 🏢 B2B · ⏰ SLA متجاوزة · 📅 اليوم الجديدة · 📋 كل النشطة · 🤖 محوّلة من QAYDAO AI
+
+**Manual run / force re-sync after editing a definition:**
+```bash
+/root/chat-qaydao/captain-config/scripts/apply_folders.sh
+FOLDERS_FORCE_SYNC=1 /root/chat-qaydao/captain-config/scripts/apply_folders.sh
+```
+
+**Verification (passed):** `created=0 updated=0 unchanged=72` on re-run · Integrity OK — all 8 users own all 9 folders (8×9=72). Original incident: أميرة had 0 → now 9.
+
+**Onboarding:** new agents need no manual step — folders auto-appear within ≤6h, or instantly via `apply_folders.sh`. End users only need a browser refresh.

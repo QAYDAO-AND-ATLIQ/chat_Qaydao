@@ -44,3 +44,11 @@ end
 
 puts ''
 puts 'Total users in account: ' + account.users.count.to_s
+
+# ---------------------------------------------------------------------------
+# NOTE (2026-05-31): Folders/Custom Views are PER-USER and are NOT created here.
+# Any new agent is auto-provisioned with all 9 standard folders by:
+#   captain-config/scripts/seed_folders.rb  (via apply_folders.sh, host cron /6h)
+# To provision immediately after adding an agent, run:
+#   /root/chat-qaydao/captain-config/scripts/apply_folders.sh
+# ---------------------------------------------------------------------------
