@@ -111,6 +111,17 @@ docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
 - Handoff (Scenario #4) now says "forwarded your message to the team + working hours"; the AI also
   clarifies forwarded+hours if the customer is confused after a handoff.
 
+### 2026-05-31 (later 3) — Daily CS digest email (replace per-event email flood)
+- Disabled per-event Chatwoot email notifications (`notification_settings.email_flags=0`) for the CS
+  team: fay, marwa, amira, omar (admin/supervisor/support unchanged). Stops the email flood.
+- Added `monitoring/daily_cs_digest.py`: one aggregated Arabic-RTL HTML email each morning summarizing
+  the last 24h (new/resolved/open/pending, handoffs, in/out message counts) and — most importantly —
+  the list of conversations waiting on the team (customer sent the last message) with direct links.
+  Sends via Mailjet SMTP read at runtime from `.env` (no secrets in the script). Default recipients =
+  the 4 CS agents above.
+- Cron: `0 5 * * *` (08:00 Asia/Riyadh) -> logs to `monitoring/cs_digest.log`. First run: next morning.
+- To change recipients: edit DEFAULT_TO in the script or run with `--to a@b,c@d`. `--test EMAIL` previews to one address.
+
 ## Change Log
 
 ### 2026-05-31 (later) — Stop internal-status leaks + tool-loop cascade
