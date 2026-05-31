@@ -102,6 +102,15 @@ docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
 - **Patch volumes are read-only bind mounts.** Editing `patches/...` on host requires container restart to take effect.
 - **`enterprise/`** code paths are loaded via `prepend_mod_with`. Custom roles only kick in for users with `role='agent' AND custom_role_id IS NOT NULL` — administrators bypass them entirely.
 
+### 2026-05-31 (later 2) — Disable out-of-office on AI inboxes + unify working hours
+- Disabled `working_hours_enabled` on inboxes 3 (WebWidget), 5 (WhatsApp), 6 (Instagram) so the
+  out-of-office template no longer fires — QAYDAO AI answers 24/7. (DB config; no seed manages it.
+  Email inbox 2 left as-is.) To re-enable later: set working_hours_enabled=true on those inboxes.
+- Unified human-support hours everywhere in seed_captain.rb to **Sat-Thu 9am-12** (weekly off: Friday),
+  matching the live working_hours config. Previously the instruction wrongly said Sun-Thu 9am-6pm.
+- Handoff (Scenario #4) now says "forwarded your message to the team + working hours"; the AI also
+  clarifies forwarded+hours if the customer is confused after a handoff.
+
 ## Change Log
 
 ### 2026-05-31 (later) — Stop internal-status leaks + tool-loop cascade
