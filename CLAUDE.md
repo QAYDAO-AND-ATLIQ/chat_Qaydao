@@ -71,6 +71,7 @@ These are non-default decisions baked into `.env` and DB state. Document any cha
 
 ### Patches (vendored on top of upstream Chatwoot)
 - `patches/enterprise/app/services/captain/llm/system_prompts_service.rb` — bind-mounted (ro) into both web+sidekiq. Patches the Captain `[Task]` line so the assistant greets the customer by their first name (from `[Contact Information]`). **Re-apply/re-check on every Chatwoot upgrade** (upstream may change this file).
+- `patches/enterprise/app/services/captain/assistant/agent_runner_service.rb` — bind-mounted (ro) into web+sidekiq. (1) Lowers runner `max_turns` 100→15 so tool-call loops fail fast instead of burning 100 turns. (2) In `process_agent_result`, suppresses internal runner failure text (e.g. "Exceeded maximum turns", "Conversation ended:") and returns `conversation_handoff` so the customer never sees internal status messages. **Re-apply/re-check on every Chatwoot upgrade.**
 - `patches/services/messages/in_reply_to_message_builder.rb` — bind-mounted read-only into `/app/...` for both `chatwoot-web` and `chatwoot-sidekiq`. Re-apply on every Chatwoot upgrade.
 
 ## Roles in this Account
@@ -102,6 +103,12 @@ docker compose up -d --force-recreate chatwoot-web chatwoot-sidekiq
 - **`enterprise/`** code paths are loaded via `prepend_mod_with`. Custom roles only kick in for users with `role='agent' AND custom_role_id IS NOT NULL` — administrators bypass them entirely.
 
 ## Change Log
+
+### 2026-05-31 (later) — Stop internal-status leaks + tool-loop cascade
+**Symptom (WhatsApp):** customer sent a fake order number; got "Conversation ended: Exceeded maximum turns: 100" sent to them, then ~1h later an unsolicited "outside working hours" greeting (no new customer message).
+**Root cause:** track API returned 404 for unknown orders -> Captain HttpTool error -> runner retried tools up to `max_turns: 100` -> the runner's failure string was sent to the customer; the failed job later retried, produced a handoff, reopened the conversation, and reopening outside business hours fired the inbox out-of-office greeting.
+**Fixes:** (1) track returns 200+success:false (see tark-Qaydao). (2) Vendored patch `agent_runner_service.rb`: `max_turns` 100→15 + suppress internal failure text -> graceful `conversation_handoff`. (3) Instruction-injection fix (earlier today) makes the AI escalate/answer instead of looping.
+**Note:** the out-of-office greeting on the WhatsApp inbox still fires for genuine out-of-hours NEW conversations; since QAYDAO AI answers 24/7, consider disabling it on the AI inboxes (open decision).
 
 ### 2026-05-31 — Warehouse stock answers + AI quality + post-Eid cleanup
 **What:** QAYDAO AI can now answer real stock/availability and reply professionally.
