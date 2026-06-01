@@ -432,3 +432,24 @@ FOLDERS_FORCE_SYNC=1 /root/chat-qaydao/captain-config/scripts/apply_folders.sh
 **Verification (passed):** `created=0 updated=0 unchanged=72` on re-run · Integrity OK — all 8 users own all 9 folders (8×9=72). Original incident: أميرة had 0 → now 9.
 
 **Onboarding:** new agents need no manual step — folders auto-appear within ≤6h, or instantly via `apply_folders.sh`. End users only need a browser refresh.
+
+### 2026-06-01 — Captain knowledge cleanup + self-healing triage digest
+**Discovery:** The Captain assistant was running on only **268 of 1148** KB responses (23%). Both retrieval services (`search_documentation_service.rb`, `search_reply_documentation_service.rb`) call `assistant.responses.approved.search(...)` — so the **880 `pending` responses never reached the LLM**. All 880 were auto-generated from conversations by `qaydao-products/scripts/extract_learning_suggestions.js` (cron `0 3,15`) and piled up because nothing triaged them.
+
+**Approved heuristic (single source of truth — also embedded in the digest script):**
+- `REJECT_short`: answer < 15 chars · `REJECT_expiry_month`: answer mentions a month name · `REJECT_hard_date`: answer has a `20xx` year
+- `REVIEW_personal`: question about a specific personal order · `REVIEW_promo`: answer mentions a discount code
+- `SAFE_generic`: everything else
+
+**Action taken (manual, verified):** Approved the **743 SAFE** rows (`UPDATE status=1`). Result **approved 268 → 1011 (3.8x)**, pending 880 → 137 (= 80 REVIEW + 57 REJECT, left pending by Rami's choice). Verified operationally: a rephrased colloquial question retrieved a newly-approved row (`#930`) at rank #1 via the real `.approved.search` path — embeddings already present, no restart needed.
+- Backup: `backups/20260601/captain_responses_pre_approve_*.sql.gz` (7.9M, full table data) + `approved_ids_*.txt` (exact 743 ids for selective rollback).
+- Selective rollback: `UPDATE captain_assistant_responses SET status=0 WHERE id IN (<ids from approved_ids file>);`
+
+**New system — `monitoring/captain_triage_digest.py` (READ-ONLY, never mutates DB):**
+- Classifies current `pending` (status=0) into SAFE/REVIEW/REJECT with the heuristic above and emails Rami one Arabic-RTL digest with a one-click button to the Captain FAQs page (`/app/accounts/1/captain/1/faqs`) for manual approve/delete.
+- SMTP read at runtime from `.env` (no secrets in file). Reuses the `daily_cs_digest.py` pattern.
+- **Cron (host):** `0 4 */2 * *` → **07:00 Asia/Riyadh, every 2 days** (1h after the 06:00-Riyadh suggestions batch). Log: `/var/log/captain-triage.log`.
+- Usage: `--dry-run` (classify+print, no email) · `--test EMAIL` (preview) · no-arg (send to rami@qaydao.com).
+- **Why:** prevents the 880-pile-up from ever recurring silently. Rami chose triage-only (no auto-approve); REJECT stays pending (never auto-deleted).
+
+**Open items (Rami's queue):** review the 80 REVIEW + decide on the 57 REJECT via the digest links.
