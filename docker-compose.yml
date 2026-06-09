@@ -52,7 +52,9 @@ services:
       - ./patches/finders/conversation_finder.rb:/app/app/finders/conversation_finder.rb:ro
       - ./patches/jobs/qaydao_retry_unassigned_conversations_job.rb:/app/app/jobs/qaydao_retry_unassigned_conversations_job.rb:ro
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
+      - ./patches/initializers/qaydao_captain_resolution_guard.rb:/app/config/initializers/qaydao_captain_resolution_guard.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
+      - ./patches/initializers/zz_qaydao_rack_attack_login.rb:/app/config/initializers/zz_qaydao_rack_attack_login.rb:ro
       - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
       - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
       - ./patches/qaydao_captain_no_interrupt.rb:/app/config/initializers/qaydao_captain_no_interrupt.rb:ro
@@ -83,7 +85,9 @@ services:
       - ./patches/finders/conversation_finder.rb:/app/app/finders/conversation_finder.rb:ro
       - ./patches/jobs/qaydao_retry_unassigned_conversations_job.rb:/app/app/jobs/qaydao_retry_unassigned_conversations_job.rb:ro
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
+      - ./patches/initializers/qaydao_captain_resolution_guard.rb:/app/config/initializers/qaydao_captain_resolution_guard.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
+      - ./patches/initializers/zz_qaydao_rack_attack_login.rb:/app/config/initializers/zz_qaydao_rack_attack_login.rb:ro
       - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
       - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
       - ./patches/qaydao_captain_no_interrupt.rb:/app/config/initializers/qaydao_captain_no_interrupt.rb:ro

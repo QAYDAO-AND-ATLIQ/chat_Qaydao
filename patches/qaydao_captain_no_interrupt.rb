@@ -27,6 +27,40 @@ Rails.application.config.to_prepare do
     mod = Module.new do
       def self.name = 'QaydaoNoInterrupt'
 
+      QAYDAO_SUPPORT_TEAM_ID = 2
+      QAYDAO_ESCALATION_LABEL = 'تصعيد'
+      QAYDAO_SOFT_HANDOFF_PATTERNS = [
+        'ممثلي خدمة العملاء',
+        'لفريق خدمة العملاء',
+        'رفع طلبك لخدمة العملاء',
+        'لدى خدمة العملاء',
+        'وجّهت رسالتك',
+        'وجهت رسالتك',
+        'تم توجيه رسالتك'
+      ].freeze
+
+      # -- (D) deterministic assign + label on handoff -------------------
+      def qaydao_escalate_assign_and_label!(reason)
+        return if @conversation.nil?
+        if @conversation.team_id.blank?
+          @conversation.update!(team_id: QAYDAO_SUPPORT_TEAM_ID)
+          Rails.logger.info("[qaydao-escalate-assign] conv ##{@conversation.id} team -> #{QAYDAO_SUPPORT_TEAM_ID} (#{reason})")
+        end
+        unless @conversation.label_list.include?(QAYDAO_ESCALATION_LABEL)
+          @conversation.add_labels([QAYDAO_ESCALATION_LABEL])
+          Rails.logger.info("[qaydao-escalate-assign] conv ##{@conversation.id} label +#{QAYDAO_ESCALATION_LABEL} (#{reason})")
+        end
+        # QAYDAO 2026-06-09 (root fix): a soft/native handoff MUST take the conversation
+        # OUT of the bot 'pending' pool, otherwise Captain::InboxPendingConversationsResolutionJob
+        # auto-resolves it ~1h later (the old-moon-924 / #2806 bug). bot_handoff! -> status :open.
+        if @conversation.reload.pending?
+          @conversation.bot_handoff!
+          Rails.logger.info("[qaydao-escalate-assign] conv ##{@conversation.id} bot_handoff! -> open (#{reason})")
+        end
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-escalate-assign] failed for conv ##{@conversation&.id} (#{reason}): #{e.message}")
+      end
+
       # -- (A) pause window + manual control -----------------------------
       def perform(conversation, assistant)
         if qaydao_captain_paused?(conversation)
@@ -84,6 +118,16 @@ Rails.application.config.to_prepare do
           end
         end
         super
+        qaydao_detect_soft_handoff_and_escalate
+      end
+
+      def qaydao_detect_soft_handoff_and_escalate
+        content = @response.is_a?(Hash) ? @response['response'].to_s : @response.to_s
+        return if content.blank?
+        return unless QAYDAO_SOFT_HANDOFF_PATTERNS.any? { |p| content.include?(p) }
+        qaydao_escalate_assign_and_label!('soft-handoff')
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-escalate-assign] soft-handoff detect failed for conv ##{@conversation&.id}: #{e.message}")
       end
 
       def qaydao_unwrap_nested_json(text)
@@ -111,6 +155,7 @@ Rails.application.config.to_prepare do
       def create_handoff_message(*args, **kwargs)
         super
         qaydao_escalate_priority_on_handoff
+        qaydao_escalate_assign_and_label!('native-handoff')
       end
 
       def qaydao_escalate_priority_on_handoff
@@ -126,6 +171,6 @@ Rails.application.config.to_prepare do
       end
     end
     Captain::Conversation::ResponseBuilderJob.prepend(mod)
-    Rails.logger.info('[qaydao-patch] no-interrupt(v2 window+manual) + json-unwrap + priority-escalate applied')
+    Rails.logger.info('[qaydao-patch] no-interrupt(v2 window+manual) + json-unwrap + priority-escalate + assign-label applied')
   end
 end
