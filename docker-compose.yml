@@ -59,6 +59,10 @@ services:
       - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
       - ./patches/qaydao_captain_no_interrupt.rb:/app/config/initializers/qaydao_captain_no_interrupt.rb:ro
       - ./patches/qaydao_custom_filter_order.rb:/app/config/initializers/qaydao_custom_filter_order.rb:ro
+      - ./patches/initializers/qaydao_faq_review.rb:/app/config/initializers/qaydao_faq_review.rb:ro
+      - ./patches/enterprise/app/views/api/v1/models/captain/_assistant_response.json.jbuilder:/app/enterprise/app/views/api/v1/models/captain/_assistant_response.json.jbuilder:ro
+      - ./patches/enterprise/app/views/api/v1/accounts/captain/assistant_responses/index.json.jbuilder:/app/enterprise/app/views/api/v1/accounts/captain/assistant_responses/index.json.jbuilder:ro
+      - ./patches/public/qaydao-faq-review.js:/app/public/qaydao-faq-review.js:ro
 
   chatwoot-sidekiq:
     image: chatwoot/chatwoot:v4.13.0
