@@ -88,4 +88,67 @@ Rails.application.config.to_prepare do
     klass.prepend(mod)
     Rails.logger.info('[qaydao-patch] captain resolution-guard applied (no auto-resolve when a human is required)')
   end
+
+  # ---------------------------------------------------------------------------
+  # QAYDAO 2026-06-10 (Fix D) — MODEL-LEVEL RESOLUTION LOCK after handoff.
+  #
+  # Bug pattern (conv #2831 / old-moon-924): conversation correctly handed off
+  # (assigned + urgent), then 12s later resolved via the WIDGET path attributed
+  # to the customer + CSAT fired — agent never got to reply.
+  #
+  # Rule: a conversation carrying the escalation label 'تصعيد' can ONLY be
+  # resolved by a human agent (Current.user is a User), or by anyone AFTER a
+  # human agent has actually replied (post-escalation). Covers ALL paths:
+  # widget toggle_status, bot resolved!, API — because it sits on the model.
+  # Fail-open on errors (never block agents due to a guard bug).
+  # ---------------------------------------------------------------------------
+  if defined?(Conversation) && !Conversation.included_modules.map(&:name).include?('QaydaoResolutionLock')
+    lock = Module.new do
+      def self.name = 'QaydaoResolutionLock'
+
+      QAYDAO_LOCK_LABEL = 'تصعيد'
+
+      def toggle_status
+        # toggle resolves only FROM open (open -> resolved); pending -> open must stay allowed
+        if open? && qaydao_resolution_locked?
+          Rails.logger.info("[qaydao-resolution-lock] blocked toggle_status->resolved on conv ##{id} (escalated, awaiting agent reply)")
+          return false
+        end
+        super
+      end
+
+      def resolved!(*args)
+        if qaydao_resolution_locked?
+          Rails.logger.info("[qaydao-resolution-lock] blocked resolved! on conv ##{id} (escalated, awaiting agent reply)")
+          return false
+        end
+        super
+      end
+
+      def qaydao_resolution_locked?
+        return false if Current.user.is_a?(::User) # human agent action — always allowed
+        return false unless label_list.include?(QAYDAO_LOCK_LABEL)
+
+        escalated_at = ActsAsTaggableOn::Tagging
+                         .joins(:tag)
+                         .where(taggable_type: 'Conversation', taggable_id: id, context: 'labels')
+                         .where(tags: { name: QAYDAO_LOCK_LABEL })
+                         .minimum(:created_at)
+        return false if escalated_at.nil?
+
+        agent_replied = messages
+                          .where(message_type: :outgoing, sender_type: 'User', private: false)
+                          .where('messages.created_at >= ?', escalated_at)
+                          .where("NOT (additional_attributes ? 'template_params')")
+                          .exists?
+        !agent_replied
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-resolution-lock] check failed conv ##{id}: #{e.message} — allowing (fail-open)")
+        false
+      end
+    end
+
+    Conversation.prepend(lock)
+    Rails.logger.info('[qaydao-patch] conversation resolution-lock applied (escalated convs close only by/after a human agent)')
+  end
 end

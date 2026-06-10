@@ -39,6 +39,16 @@ Rails.application.config.to_prepare do
         'تم توجيه رسالتك'
       ].freeze
 
+      # QAYDAO 2026-06-10 (Fix C): explicit customer requests for a human.
+      # Scanned ONLY against the latest INCOMING (customer) message, so bot
+      # phrases can't false-trigger. Deterministic — does not depend on the LLM
+      # choosing to hand off (conv #2950: bot dodged with a phone number).
+      QAYDAO_HUMAN_REQUEST_PATTERNS = [
+        'خدمة العملاء', 'حولني', 'حوّلني', 'حولوني', 'كلموني',
+        'اتواصل مع', 'أتواصل مع', 'ابي اكلم', 'أبي أكلم', 'ابغى اكلم', 'أبغى أكلم',
+        'مع شخص', 'موظف', 'ممثل', 'مندوب', 'بشري', 'انسان', 'إنسان'
+      ].freeze
+
       # -- (D) deterministic assign + label on handoff -------------------
       def qaydao_escalate_assign_and_label!(reason)
         return if @conversation.nil?
@@ -68,6 +78,24 @@ Rails.application.config.to_prepare do
           return
         end
         super
+      ensure
+        # Fix C (2026-06-10): deterministic escalation when the CUSTOMER explicitly
+        # asks for a human — runs even if the LLM dodged the handoff or errored.
+        qaydao_escalate_on_customer_request(conversation)
+      end
+
+      def qaydao_escalate_on_customer_request(conversation)
+        return if conversation.nil?
+        last_incoming = Conversation.uncached do
+          conversation.messages.where(message_type: :incoming).order(:created_at).last
+        end
+        return if last_incoming.nil? || last_incoming.content.blank?
+        return unless QAYDAO_HUMAN_REQUEST_PATTERNS.any? { |p| last_incoming.content.include?(p) }
+
+        @conversation = conversation
+        qaydao_escalate_assign_and_label!('customer-request')
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-escalate-assign] customer-request detect failed for conv ##{conversation&.id}: #{e.message}")
       end
 
       def qaydao_captain_paused?(conversation)
@@ -117,8 +145,33 @@ Rails.application.config.to_prepare do
             @response = @response.merge('response' => cleaned)
           end
         end
+        # Fix E (2026-06-10): debounce — rapid consecutive customer messages spawn
+        # parallel ResponseBuilderJobs producing near-identical duplicate replies
+        # (51 cases / 48h, e.g. conv #2950, #2831). Skip if an identical-prefix bot
+        # reply was already sent within the last 20 seconds.
+        if qaydao_duplicate_reply?
+          Rails.logger.info("[qaydao-debounce] skipped duplicate Captain reply (conv ##{@conversation&.id})")
+          return
+        end
         super
         qaydao_detect_soft_handoff_and_escalate
+      end
+
+      def qaydao_duplicate_reply?
+        return false if @conversation.nil?
+        content = (@response.is_a?(Hash) ? @response['response'] : @response).to_s.strip
+        return false if content.blank?
+        prefix = content[0, 60]
+        Conversation.uncached do
+          @conversation.messages
+                       .where(sender_type: 'Captain::Assistant', message_type: :outgoing, private: false)
+                       .where('created_at >= ?', 20.seconds.ago)
+                       .where('left(content, 60) = ?', prefix)
+                       .exists?
+        end
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-debounce] check failed conv ##{@conversation&.id}: #{e.message}")
+        false
       end
 
       def qaydao_detect_soft_handoff_and_escalate
