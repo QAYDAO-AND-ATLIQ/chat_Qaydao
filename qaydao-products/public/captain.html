@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>Captain AI Manager · إدارة المساعد الذكي</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.0/dist/cdn.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  body { font-family: 'Cairo', sans-serif; background: #f5f6f0; }
+  .qaydao-green { background: linear-gradient(135deg, #7a875c 0%, #5e6a47 100%); }
+  .text-qaydao { color: #7a875c; }
+  .border-qaydao { border-color: #7a875c; }
+  [x-cloak] { display: none !important; }
+  .editor-textarea {
+    font-family: 'Cairo', sans-serif;
+    line-height: 1.8;
+    direction: rtl;
+    min-height: 400px;
+    resize: vertical;
+  }
+  .tab-active { background: #7a875c; color: white; }
+  .markdown-preview h1 { font-size: 1.5rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+  .markdown-preview h2 { font-size: 1.25rem; font-weight: 600; margin: 0.75rem 0 0.5rem; }
+  .markdown-preview h3 { font-size: 1.1rem; font-weight: 600; margin: 0.5rem 0; }
+  .markdown-preview p { margin: 0.5rem 0; line-height: 1.7; }
+  .markdown-preview ul, .markdown-preview ol { margin: 0.5rem 1.5rem; }
+  .markdown-preview strong { font-weight: 700; color: #5e6a47; }
+  .markdown-preview a { color: #7a875c; text-decoration: underline; }
+  .save-indicator { transition: all 0.3s; }
+  .toast { animation: slideIn 0.3s ease; }
+  @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+<div x-data="captainManager()" x-init="init()" x-cloak class="min-h-screen p-4 md:p-8 max-w-7xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex flex-wrap items-center justify-between mb-6 gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-12 h-12 qaydao-green rounded-xl flex items-center justify-center text-white font-black text-2xl">🤖</div>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-800">إدارة QAYDAO AI</h1>
+        <p class="text-sm text-gray-500">Captain Manager Studio · للموظفين</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/products/captain/learn" class="text-sm bg-yellow-100 text-yellow-800 hover:bg-yellow-200 px-3 py-2 rounded font-semibold">🎓 تعليم AI</a>
+      <a href="/products/captain/learn" class="text-sm bg-yellow-100 text-yellow-800 hover:bg-yellow-200 px-3 py-2 rounded font-semibold">🎓 تعليم AI</a>
+      <a href="/products/captain/replies" class="text-sm bg-purple-50 text-purple-700 hover:bg-purple-100 px-3 py-2 rounded font-semibold">🤖 ردود AI لحظياً</a>
+      <a href="/products/captain/learn" class="text-sm bg-yellow-100 text-yellow-800 hover:bg-yellow-200 px-3 py-2 rounded font-semibold">🎓 تعليم AI</a>
+      <a href="/products/captain/learn" class="text-sm bg-yellow-100 text-yellow-800 hover:bg-yellow-200 px-3 py-2 rounded font-semibold">🎓 تعليم AI</a>
+      <a href="/products/captain/replies" class="text-sm bg-purple-50 text-purple-700 hover:bg-purple-100 px-3 py-2 rounded font-semibold">🤖 ردود AI لحظياً</a>
+      <a href="/products" class="text-sm text-gray-600 hover:text-qaydao px-3 py-2">← العودة لإدارة المنتجات</a>
+      <button @click="loadAll()" class="text-gray-500 hover:text-qaydao text-2xl" title="تحديث">⟳</button>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="fixed top-4 left-4 z-50 space-y-2">
+    <template x-for="toast in toasts" :key="toast.id">
+      <div class="toast bg-white rounded-lg shadow-lg p-3 flex items-center gap-2 min-w-[280px]"
+           :class="{'border-r-4 border-green-500': toast.type === 'success',
+                    'border-r-4 border-red-500': toast.type === 'error',
+                    'border-r-4 border-blue-500': toast.type === 'info'}">
+        <span class="text-2xl" x-text="toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️'"></span>
+        <span class="text-sm" x-text="toast.message"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- Stats Hero -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="bg-white rounded-xl p-4 shadow border-r-4 border-blue-500">
+      <div class="text-3xl font-black text-gray-800" x-text="stats?.documents?.total || 0"></div>
+      <div class="text-xs text-gray-500">📄 وثيقة (<span x-text="stats?.documents?.total_kb || 0"></span> KB)</div>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow border-r-4 border-purple-500">
+      <div class="text-3xl font-black text-gray-800" x-text="stats?.faqs?.total || 0"></div>
+      <div class="text-xs text-gray-500">❓ سؤال شائع</div>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow border-r-4 border-orange-500">
+      <div class="text-3xl font-black text-gray-800" x-text="stats?.tools?.total || 0"></div>
+      <div class="text-xs text-gray-500">🛠 أداة (<span x-text="stats?.tools?.active || 0"></span> نشطة)</div>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow border-r-4 border-green-500">
+      <div class="text-3xl font-black text-gray-800" x-text="stats?.inboxes?.connected || 0"></div>
+      <div class="text-xs text-gray-500">📥 قناة مربوطة</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="bg-white rounded-2xl shadow overflow-hidden">
+    <div class="border-b flex flex-wrap">
+      <button @click="activeTab = 'documents'" :class="activeTab === 'documents' ? 'tab-active' : 'hover:bg-gray-50'"
+              class="px-6 py-3 font-bold text-sm transition flex items-center gap-2">
+        📄 الوثائق <span class="bg-white bg-opacity-30 text-xs px-2 rounded-full" x-text="documents.length"></span>
+      </button>
+      <button @click="activeTab = 'faqs'" :class="activeTab === 'faqs' ? 'tab-active' : 'hover:bg-gray-50'"
+              class="px-6 py-3 font-bold text-sm transition flex items-center gap-2">
+        ❓ الأسئلة الشائعة <span class="bg-white bg-opacity-30 text-xs px-2 rounded-full" x-text="faqs.length"></span>
+      </button>
+      <button @click="activeTab = 'tools'" :class="activeTab === 'tools' ? 'tab-active' : 'hover:bg-gray-50'"
+              class="px-6 py-3 font-bold text-sm transition flex items-center gap-2">
+        🛠 الأدوات <span class="bg-white bg-opacity-30 text-xs px-2 rounded-full" x-text="tools.length"></span>
+      </button>
+      <button @click="activeTab = 'instructions'" :class="activeTab === 'instructions' ? 'tab-active' : 'hover:bg-gray-50'"
+              class="px-6 py-3 font-bold text-sm transition">
+        🎯 تعليمات Captain
+      </button>
+    </div>
+
+    <!-- ═══ TAB: DOCUMENTS ═══ -->
+    <div x-show="activeTab === 'documents'" class="p-5">
+      <div x-show="!editingDoc" class="space-y-3">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-bold text-lg">📄 الوثائق ({{ documents.length }})</h3>
+          <button @click="startNewDoc()" class="qaydao-green text-white px-4 py-2 rounded-lg text-sm font-bold hover:shadow-lg">
+            + إضافة وثيقة جديدة
+          </button>
+        </div>
+
+        <template x-for="doc in documents" :key="doc.id">
+          <div class="border rounded-xl p-4 hover:bg-gray-50 transition">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="font-bold text-gray-800" x-text="doc.name"></span>
+                  <span x-show="doc.status === 1" class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✓ متاح</span>
+                  <span x-show="doc.status === 0" class="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">⏳ في الانتظار</span>
+                  <span x-show="doc.status === 2" class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">❌ فشل</span>
+                </div>
+                <a :href="doc.external_link" target="_blank" class="text-xs text-blue-600 hover:underline truncate block max-w-[600px]" x-text="doc.external_link"></a>
+                <div class="text-xs text-gray-500 mt-1">
+                  <span x-text="doc.content_length.toLocaleString('ar-SA')"></span> حرف ·
+                  آخر تعديل: <span x-text="formatDate(doc.updated_at)"></span>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button @click="editDoc(doc)" class="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-blue-600">✏ تعديل</button>
+                <button @click="deleteDocConfirm(doc)" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-red-600">🗑</button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Document Editor -->
+      <div x-show="editingDoc">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-lg" x-text="editingDoc?.id ? '✏ تعديل وثيقة' : '+ وثيقة جديدة'"></h3>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500 save-indicator" x-text="saveStatus"></span>
+            <button @click="cancelEdit()" class="text-gray-500 hover:text-gray-700 text-sm px-3 py-1.5">إلغاء</button>
+            <button @click="saveDoc()" :disabled="saving"
+                    class="qaydao-green text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:shadow-lg disabled:opacity-50">
+              💾 حفظ
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Editor Side -->
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-gray-700 mb-1">اسم الوثيقة</label>
+              <input type="text" x-model="editingDoc.name" 
+                     class="w-full px-3 py-2 border-2 rounded-lg focus:outline-none focus:border-qaydao text-sm"
+                     placeholder="مثال: سياسة-الشحن">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-700 mb-1">الرابط (External Link)</label>
+              <input type="text" x-model="editingDoc.external_link" 
+                     class="w-full px-3 py-2 border-2 rounded-lg focus:outline-none focus:border-qaydao text-sm"
+                     placeholder="https://qaydao.com/...">
+              <div class="text-xs text-gray-500 mt-1">إذا لا تملك رابط، استخدم: https://qaydao.com/internal/اسم-الوثيقة</div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-700 mb-1">
+                المحتوى
+                <span class="text-gray-400" x-text="'(' + (editingDoc.content?.length || 0).toLocaleString('ar-SA') + ' حرف)'"></span>
+              </label>
+              <textarea x-model="editingDoc.content" @input="markDirty(); livePreview()"
+                        class="editor-textarea w-full px-3 py-2 border-2 rounded-lg focus:outline-none focus:border-qaydao text-sm"
+                        placeholder="اكتب محتوى الوثيقة هنا... يدعم Markdown
+مثال:
+# عنوان رئيسي
+## عنوان فرعي
+**نص بارز**
+- نقطة 1
+- نقطة 2
+
+هذا المحتوى سيستخدمه Captain AI للإجابة على أسئلة العملاء."></textarea>
+            </div>
+          </div>
+
+          <!-- Preview Side -->
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">معاينة (كيف يقرأها Captain)</label>
+            <div class="markdown-preview bg-gray-50 border-2 rounded-lg p-4 min-h-[400px] max-h-[600px] overflow-y-auto text-sm" x-html="previewHTML"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: FAQs ═══ -->
+    <div x-show="activeTab === 'faqs'" class="p-5">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-bold text-lg">❓ الأسئلة الشائعة (FAQs)</h3>
+        <button @click="startNewFAQ()" class="qaydao-green text-white px-4 py-2 rounded-lg text-sm font-bold hover:shadow-lg">
+          + إضافة سؤال
+        </button>
+      </div>
+
+      <div class="bg-blue-50 border-r-4 border-blue-400 p-3 rounded text-xs text-blue-800 mb-4">
+        💡 الأسئلة الشائعة تساعد Captain يجاوب فوراً على الأسئلة المتكررة بدون الحاجة للبحث في الوثائق.
+      </div>
+
+      <!-- QAYDAO: team review notice -->
+      <div x-show="!editingFAQ" class="bg-amber-50 border-r-4 border-amber-400 p-3 rounded text-sm text-amber-900 mb-3 font-bold flex items-center gap-2">
+        <span class="text-lg">⚠️</span>
+        <span>تنبيه للفريق: عند مراجعة أي سؤال أو تصحيح إجابته، اضغط زر <span class="bg-green-500 text-white px-2 py-0.5 rounded-lg text-xs whitespace-nowrap">تمت المراجعة؟</span> ليتحوّل إلى <span class="bg-green-600 text-white px-2 py-0.5 rounded-lg text-xs whitespace-nowrap">✓ تمت المراجعة</span> — حتى نعرف ما تمت مراجعته ولا يتكرر الجهد.</span>
+      </div>
+
+      <!-- QAYDAO: review progress + filters -->
+      <div x-show="!editingFAQ" class="flex flex-wrap items-center gap-2 mb-4 text-xs">
+        <span class="bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-full font-bold">
+          ✓ مُراجَع <span x-text="reviewedCount()"></span> / <span x-text="faqs.length"></span>
+          (<span x-text="faqs.length ? Math.round(100 * reviewedCount() / faqs.length) : 0"></span>٪)
+        </span>
+        <button @click="faqReviewFilter = 'all'"
+                :class="faqReviewFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600'"
+                class="px-3 py-1.5 rounded-full font-bold">الكل</button>
+        <button @click="faqReviewFilter = 'reviewed'"
+                :class="faqReviewFilter === 'reviewed' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'"
+                class="px-3 py-1.5 rounded-full font-bold">مُراجَع</button>
+        <button @click="faqReviewFilter = 'pending'"
+                :class="faqReviewFilter === 'pending' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600'"
+                class="px-3 py-1.5 rounded-full font-bold">غير مُراجَع</button>
+      </div>
+
+      <div x-show="!editingFAQ" class="space-y-2">
+        <template x-if="faqs.length === 0">
+          <div class="text-center text-gray-500 py-8 text-sm">
+            لا توجد أسئلة بعد. اضغط "إضافة سؤال" لتبدأ.
+          </div>
+        </template>
+        <template x-for="faq in filteredFaqs()" :key="faq.id">
+          <div class="border rounded-xl p-4 hover:bg-gray-50">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1">
+                <div class="font-bold text-gray-800 mb-1">❓ <span x-text="faq.question"></span></div>
+                <div class="text-sm text-gray-600 mt-2 whitespace-pre-wrap" x-text="faq.answer"></div>
+                <div class="text-xs text-gray-400 mt-2">
+                  <span x-show="faq.edited" class="bg-blue-100 text-blue-700 px-2 rounded-full">✏ مُحرَّر يدوياً</span>
+                  <span x-show="faq.reviewed" class="bg-green-100 text-green-700 px-2 rounded-full mr-1"
+                        :title="'تمت المراجعة • ' + formatDate(faq.reviewed_at)">✓ مُراجَع</span>
+                  <span class="ml-2" x-text="formatDate(faq.created_at)"></span>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button @click="toggleReviewed(faq)"
+                        :class="faq.reviewed ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600 border border-gray-300'"
+                        :title="faq.reviewed ? ('راجعها الفريق • ' + formatDate(faq.reviewed_at) + ' — اضغط للإلغاء') : 'اضغط لتمييزها كمُراجَعة'"
+                        class="px-3 py-1 rounded-lg text-xs whitespace-nowrap"
+                        x-text="faq.reviewed ? '✓ تمت المراجعة' : 'تمت المراجعة؟'"></button>
+                <button @click="editFAQ(faq)" class="bg-blue-500 text-white px-3 py-1 rounded-lg text-xs">✏ تعديل</button>
+                <button @click="deleteFAQConfirm(faq)" class="bg-red-500 text-white px-3 py-1 rounded-lg text-xs">🗑</button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- FAQ Editor -->
+      <div x-show="editingFAQ" class="border-2 border-qaydao rounded-xl p-4">
+        <h4 class="font-bold mb-3" x-text="editingFAQ?.id ? '✏ تعديل سؤال' : '+ سؤال جديد'"></h4>
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs font-bold text-gray-700 mb-1 block">السؤال (كما يكتبه العميل)</label>
+            <input type="text" x-model="editingFAQ.question"
+                   class="w-full px-3 py-2 border-2 rounded-lg focus:outline-none focus:border-qaydao"
+                   placeholder="مثال: كم مدة التوصيل؟">
+          </div>
+          <div>
+            <label class="text-xs font-bold text-gray-700 mb-1 block">الإجابة</label>
+            <textarea x-model="editingFAQ.answer" rows="5"
+                      class="w-full px-3 py-2 border-2 rounded-lg focus:outline-none focus:border-qaydao"
+                      placeholder="الإجابة المفصّلة..."></textarea>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button @click="editingFAQ = null" class="text-gray-600 px-4 py-2 text-sm">إلغاء</button>
+            <button @click="saveFAQ()" :disabled="saving" class="qaydao-green text-white px-4 py-2 rounded-lg text-sm font-bold">💾 حفظ</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: TOOLS ═══ -->
+    <div x-show="activeTab === 'tools'" class="p-5">
+      <h3 class="font-bold text-lg mb-4">🛠 الأدوات المخصصة</h3>
+      <div class="bg-yellow-50 border-r-4 border-yellow-400 p-3 rounded text-xs text-yellow-800 mb-4">
+        ⚠️ الأدوات تحتاج تعديل من Chatwoot مباشرة (لأمان أعلى). 
+        <a href="https://chat.qaydao.com/app/accounts/1/captain/1/tools" target="_blank" class="font-bold underline">افتح إدارة الأدوات ↗</a>
+      </div>
+      <div class="space-y-2">
+        <template x-for="tool in tools" :key="tool.id">
+          <div class="border rounded-xl p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="font-bold" x-text="tool.title"></span>
+                  <span x-show="tool.enabled" class="bg-green-100 text-green-700 text-xs px-2 rounded-full">✓ مفعل</span>
+                  <span x-show="!tool.enabled" class="bg-gray-100 text-gray-600 text-xs px-2 rounded-full">معطّل</span>
+                </div>
+                <div class="text-xs text-gray-500 font-mono mb-1" x-text="tool.http_method + ' ' + tool.endpoint_url"></div>
+                <div class="text-sm text-gray-700" x-text="tool.description"></div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: INSTRUCTIONS ═══ -->
+    <div x-show="activeTab === 'instructions'" class="p-5">
+      <h3 class="font-bold text-lg mb-4">🎯 تعليمات Captain (System Prompt)</h3>
+      <div class="bg-purple-50 border-r-4 border-purple-400 p-3 rounded text-xs text-purple-800 mb-4">
+        💡 هذه التعليمات الأساسية التي تتحكّم بسلوك Captain - كيف يرد، متى يصعّد، ما الذي يفعله وما لا يفعله.
+      </div>
+      <div class="space-y-3">
+        <textarea x-model="assistantInstructions" rows="20"
+                  class="w-full px-3 py-2 border-2 rounded-lg focus:outline-none focus:border-qaydao text-sm font-mono"
+                  placeholder="تعليمات Captain..."></textarea>
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-gray-500" x-text="(assistantInstructions?.length || 0) + ' حرف'"></span>
+          <button @click="saveInstructions()" class="qaydao-green text-white px-6 py-2 rounded-lg font-bold">
+            💾 حفظ التعليمات
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mt-4 text-center text-xs text-gray-400">
+    Captain Manager Studio · مباشر مع Chatwoot DB · جميع التغييرات تنعكس فوراً
+  </div>
+</div>
+
+<script>
+function captainManager() {
+  return {
+    stats: null,
+    documents: [],
+    faqs: [],
+    faqReviewFilter: 'all',
+    tools: [],
+    assistantInstructions: '',
+    activeTab: 'documents',
+
+    editingDoc: null,
+    editingFAQ: null,
+    saving: false,
+    saveStatus: '',
+    previewHTML: '',
+
+    toasts: [],
+
+    async init() {
+      await this.loadAll();
+    },
+
+    async loadAll() {
+      try {
+        const [statsRes, docsRes, faqsRes, toolsRes, asstRes] = await Promise.all([
+          fetch('/products/api/captain/stats').then(r => r.json()),
+          fetch('/products/api/captain/documents').then(r => r.json()),
+          fetch('/products/api/captain/faqs').then(r => r.json()),
+          fetch('/products/api/captain/tools').then(r => r.json()),
+          fetch('/products/api/captain/assistant').then(r => r.json())
+        ]);
+        this.stats = statsRes;
+        this.documents = docsRes.documents || [];
+        this.faqs = faqsRes.faqs || [];
+        this.tools = toolsRes.tools || [];
+        this.assistantInstructions = asstRes.assistant?.config?.instruction || '';
+      } catch (e) { 
+        this.toast('فشل التحميل: ' + e.message, 'error'); 
+      }
+    },
+
+    formatDate(d) {
+      if (!d) return '-';
+      return new Date(d).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' });
+    },
+
+    toast(message, type = 'info') {
+      const id = Date.now();
+      this.toasts.push({ id, message, type });
+      setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 4000);
+    },
+
+    // ─── Documents ───
+    startNewDoc() {
+      this.editingDoc = { name: '', external_link: '', content: '' };
+      this.previewHTML = '';
+    },
+
+    editDoc(doc) {
+      this.editingDoc = JSON.parse(JSON.stringify(doc));
+      this.livePreview();
+    },
+
+    cancelEdit() {
+      this.editingDoc = null;
+      this.saveStatus = '';
+    },
+
+    markDirty() {
+      this.saveStatus = '● غير محفوظ';
+    },
+
+    livePreview() {
+      try {
+        this.previewHTML = marked.parse(this.editingDoc.content || '');
+      } catch (e) {
+        this.previewHTML = '<em class="text-red-500">خطأ في المعاينة</em>';
+      }
+    },
+
+    async saveDoc() {
+      if (!this.editingDoc.name || !this.editingDoc.external_link) {
+        this.toast('الاسم والرابط مطلوبان', 'error');
+        return;
+      }
+      this.saving = true;
+      this.saveStatus = '⏳ جاري الحفظ...';
+
+      try {
+        const isNew = !this.editingDoc.id;
+        const url = isNew ? '/products/api/captain/documents'
+                          : `/products/api/captain/documents/${this.editingDoc.id}`;
+        const method = isNew ? 'POST' : 'PUT';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: this.editingDoc.name,
+            external_link: this.editingDoc.external_link,
+            content: this.editingDoc.content
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'فشل');
+
+        this.toast(isNew ? '✅ تم إنشاء الوثيقة' : '✅ تم حفظ التعديلات', 'success');
+        this.saveStatus = '✓ محفوظ';
+        await this.loadAll();
+        setTimeout(() => { this.editingDoc = null; }, 800);
+      } catch (e) {
+        this.toast('فشل الحفظ: ' + e.message, 'error');
+        this.saveStatus = '❌ فشل';
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async deleteDocConfirm(doc) {
+      if (!confirm(`حذف "${doc.name}"؟ Captain لن يستخدمها بعد الآن.`)) return;
+      try {
+        await fetch(`/products/api/captain/documents/${doc.id}`, { method: 'DELETE' });
+        this.toast('✅ تم الحذف', 'success');
+        await this.loadAll();
+      } catch (e) { this.toast('فشل الحذف', 'error'); }
+    },
+
+    // ─── FAQs ───
+    startNewFAQ() {
+      this.editingFAQ = { question: '', answer: '' };
+    },
+
+    reviewedCount() {
+      return this.faqs.filter(f => f.reviewed).length;
+    },
+    filteredFaqs() {
+      if (this.faqReviewFilter === 'reviewed') return this.faqs.filter(f => f.reviewed);
+      if (this.faqReviewFilter === 'pending') return this.faqs.filter(f => !f.reviewed);
+      return this.faqs;
+    },
+    async toggleReviewed(faq) {
+      const to = !faq.reviewed;
+      try {
+        const res = await fetch(`/products/api/captain/faqs/${faq.id}/reviewed`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reviewed: to })
+        });
+        const data = await res.json();
+        if (data.success && data.faq) {
+          faq.reviewed = data.faq.reviewed;
+          faq.reviewed_at = data.faq.reviewed_at;
+        } else {
+          alert('فشل تحديث المراجعة: ' + (data.error || 'خطأ غير معروف'));
+        }
+      } catch (e) {
+        alert('خطأ في الاتصال أثناء تحديث المراجعة');
+      }
+    },
+    editFAQ(faq) {
+      this.editingFAQ = JSON.parse(JSON.stringify(faq));
+    },
+
+    async saveFAQ() {
+      if (!this.editingFAQ.question || !this.editingFAQ.answer) {
+        this.toast('السؤال والإجابة مطلوبان', 'error');
+        return;
+      }
+      this.saving = true;
+      try {
+        const isNew = !this.editingFAQ.id;
+        const url = isNew ? '/products/api/captain/faqs' : `/products/api/captain/faqs/${this.editingFAQ.id}`;
+        const method = isNew ? 'POST' : 'PUT';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.editingFAQ)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        this.toast(isNew ? '✅ تم الإضافة' : '✅ تم التعديل', 'success');
+        this.editingFAQ = null;
+        await this.loadAll();
+      } catch (e) {
+        this.toast('فشل الحفظ: ' + e.message, 'error');
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async deleteFAQConfirm(faq) {
+      if (!confirm(`حذف السؤال "${faq.question.substring(0, 40)}..."؟`)) return;
+      try {
+        await fetch(`/products/api/captain/faqs/${faq.id}`, { method: 'DELETE' });
+        this.toast('✅ تم الحذف', 'success');
+        await this.loadAll();
+      } catch (e) { this.toast('فشل الحذف', 'error'); }
+    },
+
+    // ─── Instructions ───
+    async saveInstructions() {
+      try {
+        const res = await fetch('/products/api/captain/assistant/instructions', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instructions: this.assistantInstructions })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        this.toast('✅ تم حفظ التعليمات', 'success');
+      } catch (e) {
+        this.toast('فشل: ' + e.message, 'error');
+      }
+    }
+  };
+}
+</script>
+<script>
+// identity badge + audit link (Chatwoot SSO)
+fetch('/products/api/whoami').then(r=>r.json()).then(j=>{
+  if(!j.ok||!j.actor) return;
+  const b=document.createElement('div');
+  b.style.cssText='position:fixed;bottom:14px;left:14px;z-index:70;display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid #e7d8a8;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;box-shadow:0 6px 20px rgba(19,33,27,.13);font-family:inherit';
+  const av=String(j.actor.name||'؟').trim().charAt(0);
+  b.innerHTML='<span style="width:24px;height:24px;border-radius:50%;background:linear-gradient(140deg,#c9a33e,#a8801f);color:#fff;display:grid;place-items:center;font-size:11px">'+av+'</span>'
+    +'<span>'+j.actor.name+(j.actor.verified?' <span title="موثّق من Chatwoot">✅</span>':'')+'</span>'
+    +'<a href="/products/captain/audit" style="margin-right:6px;color:#0b6e4f;text-decoration:none;font-size:11.5px">📜 سجل التدقيق</a>';
+  document.body.appendChild(b);
+}).catch(()=>{});
+</script>
+</body>
+</html>

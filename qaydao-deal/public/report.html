@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تقرير الصفقات | QAYDAO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2f1ec; --surface:#fff; --surface-2:#faf9f5;
+  --ink:#13211b; --muted:#6d7a72; --line:#e6e3da;
+  --brand:#0b6e4f; --brand-d:#06502f; --brand-soft:#e4f1ea;
+  --gold:#a8801f; --gold-soft:#f6efd8; --gold-line:#e7d8a8;
+  --danger:#b3402f; --danger-soft:#f7e4e1;
+  --r:18px;
+  --sh-1:0 1px 2px rgba(19,33,27,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans Arabic',system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased;padding-bottom:48px;
+  background-image:radial-gradient(circle at 100% 0,rgba(11,110,79,.05),transparent 38%)}
+.wrap{max-width:980px;margin:0 auto;padding:18px}
+header{position:sticky;top:0;z-index:30;background:rgba(242,241,236,.84);backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line)}
+.hd{max-width:980px;margin:0 auto;padding:14px 18px;display:flex;align-items:center;gap:12px}
+.logo{width:40px;height:40px;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-d));display:grid;place-items:center;color:#fff;font-weight:700;font-size:18px}
+.hd h1{font-size:17px;font-weight:700}
+.hd .sub{font-size:11.5px;color:var(--muted);font-weight:500;margin-top:-2px}
+.monthsel{margin-right:auto;display:flex;align-items:center;gap:8px}
+.monthsel input{border:1.5px solid var(--line);border-radius:10px;padding:8px 12px;font-family:inherit;font-size:13.5px;font-weight:600;background:#fff}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin:18px 0}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-1);padding:16px}
+.kpi .k{font-size:11.5px;font-weight:600;color:var(--muted)}
+.kpi .v{font-size:23px;font-weight:700;letter-spacing:-.5px;margin-top:6px}
+.kpi.gold .v{color:var(--gold)} .kpi.brand .v{color:var(--brand-d)} .kpi.amber .v{color:#8a6d1c}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-1);margin-bottom:18px;overflow:hidden}
+.panel .ph{padding:15px 18px;border-bottom:1px solid var(--line);font-size:14px;font-weight:700}
+.tblwrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:680px}
+th,td{padding:11px 14px;text-align:right;font-size:12.5px}
+th{font-size:10.5px;font-weight:600;color:var(--muted);background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap}
+td{border-bottom:1px solid var(--line);font-weight:500}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+.emp{font-weight:700}
+.num{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.comm{color:var(--gold);font-weight:700;white-space:nowrap}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.pill.g{background:var(--brand-soft);color:var(--brand-d)}
+.pill.a{background:var(--gold-soft);color:#8a6d1c}
+.pill.r{background:var(--danger-soft);color:var(--danger)}
+.pill.zero{background:#eee;color:var(--muted)}
+.rank{width:23px;height:23px;border-radius:7px;background:var(--brand-soft);color:var(--brand-d);display:inline-grid;place-items:center;font-size:11px;font-weight:700;margin-left:7px}
+.rank.g1{background:var(--gold-soft);color:var(--gold)}
+.ordtag{font-family:ui-monospace,monospace;font-size:11.5px;font-weight:600;color:var(--brand-d);white-space:nowrap}
+.date{font-size:11px;color:var(--muted);white-space:nowrap}
+.empty{padding:44px 18px;text-align:center;color:var(--muted);font-size:13.5px}
+.loading{padding:44px;text-align:center;color:var(--muted)}
+.act{display:flex;gap:6px;white-space:nowrap}
+.act button{border:none;border-radius:8px;padding:6px 11px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:.13s}
+.act button:active{transform:scale(.94)}
+.act .ap{background:var(--brand);color:#fff}
+.act .rj{background:var(--danger-soft);color:var(--danger)}
+.act .un{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.vbadge{font-size:13px}
+.toast{position:fixed;top:14px;right:50%;transform:translateX(50%);z-index:99;background:#2a2a26;color:#fff;border-radius:12px;padding:10px 17px;font-size:12.5px;font-weight:600;display:none;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.toast.on{display:block}
+.toast.err{background:var(--danger)}
+@media(max-width:760px){.kpis{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header><div class="hd">
+  <div class="logo">Q</div>
+  <div><h1>تقرير الصفقات</h1><div class="sub">مراجعة واعتماد عمولات الفريق</div></div>
+  <div class="monthsel"><span style="font-size:12px;color:var(--muted);font-weight:600">الشهر</span><input type="month" id="month"></div>
+</div></header>
+
+<div class="wrap">
+  <div class="kpis">
+    <div class="kpi brand"><div class="k">📦 الصفقات (غير المرفوضة)</div><div class="v" id="kDeals">—</div></div>
+    <div class="kpi"><div class="k">🛒 قيمة السلال</div><div class="v" id="kCart">—</div></div>
+    <div class="kpi gold"><div class="k">✅ عمولات معتمدة</div><div class="v" id="kApproved">—</div></div>
+    <div class="kpi amber"><div class="k">⏳ بانتظار التدقيق</div><div class="v" id="kPending">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="ph">🏆 ملخص الموظفين</div>
+    <div class="tblwrap" id="summaryWrap"><div class="loading">جارٍ التحميل…</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="ph">🧾 تدقيق الطلبات — طابق رقم الطلب مع سلة ثم اعتمد</div>
+    <div class="tblwrap" id="detailWrap"><div class="loading">جارٍ التحميل…</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const urlKey=new URLSearchParams(location.search).get('key')||'';
+const KEY=urlKey;
+const API='/deal/api';
+const SAR=n=>new Intl.NumberFormat('ar-SA',{maximumFractionDigits:0}).format(Math.round(n||0))+' ر.س';
+const SAR2=n=>new Intl.NumberFormat('ar-SA',{maximumFractionDigits:1}).format(n||0)+' ر.س';
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $=id=>document.getElementById(id);
+const monthEl=$('month'); monthEl.value=new Date().toISOString().slice(0,7);
+monthEl.addEventListener('change',load);
+let toastT=null;
+function toast(m,err){ const t=$('toast'); t.textContent=m; t.className='toast on'+(err?' err':''); clearTimeout(toastT); toastT=setTimeout(()=>t.className='toast',2800); }
+const STATUS={pending:['⏳ معلّقة','a'],approved:['✅ معتمدة','g'],rejected:['✕ مرفوضة','r']};
+
+async function load(){
+  $('summaryWrap').innerHTML='<div class="loading">جارٍ التحميل…</div>';
+  $('detailWrap').innerHTML='<div class="loading">جارٍ التحميل…</div>';
+  const month=monthEl.value||new Date().toISOString().slice(0,7);
+  try{
+    const r=await fetch(`${API}/report?month=${month}${KEY?'&key='+encodeURIComponent(KEY):''}`);
+    const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'خطأ');
+    render(j);
+  }catch(e){
+    $('summaryWrap').innerHTML=`<div class="empty">⚠️ ${esc(e.message)}</div>`;
+    $('detailWrap').innerHTML='';
+  }
+}
+
+function render(j){
+  $('kDeals').textContent=j.totals.deals;
+  $('kCart').textContent=SAR(j.totals.cart);
+  $('kApproved').textContent=SAR2(j.totals.comm_approved);
+  $('kPending').textContent=SAR2(j.totals.comm_pending);
+
+  const sw=$('summaryWrap');
+  if(!j.summary.length) sw.innerHTML='<div class="empty">لا صفقات هذا الشهر بعد</div>';
+  else sw.innerHTML=`<table><thead><tr>
+      <th>الموظف</th><th>الصفقات</th><th>قيمة السلال</th><th>✅ معتمد</th><th>⏳ معلّق</th>
+    </tr></thead><tbody>${
+    j.summary.map((e,i)=>`<tr>
+      <td class="emp"><span class="rank ${i===0?'g1':''}">${i+1}</span>${esc(e.employee_name)}</td>
+      <td><span class="pill ${e.deals?'g':'zero'}">${e.deals}</span></td>
+      <td class="num">${SAR(e.cart)}</td>
+      <td class="comm">${SAR2(e.comm_approved)}</td>
+      <td class="num" style="color:#8a6d1c">${SAR2(e.comm_pending)}</td>
+    </tr>`).join('')}</tbody></table>`;
+
+  const dw=$('detailWrap');
+  if(!j.detail.length) dw.innerHTML='<div class="empty">لا طلبات هذا الشهر</div>';
+  else dw.innerHTML=`<table><thead><tr>
+      <th>رقم الطلب</th><th>الموظف</th><th>موثّق</th><th>المنتج</th><th>الخصم</th><th>الكوبون</th><th>السلة</th><th>العمولة</th><th>الحالة</th><th>إجراء</th><th>التاريخ</th>
+    </tr></thead><tbody>${
+    j.detail.map(d=>{
+      const st=STATUS[d.status]||STATUS.pending;
+      return `<tr id="row-${d.id}">
+        <td><span class="ordtag">#${esc(d.order_number)}</span></td>
+        <td>${esc(d.employee_name)}</td>
+        <td class="vbadge" title="${d.verified_employee?'هوية مؤكدة من جلسة Chatwoot':'إدخال يدوي'}">${d.verified_employee?'🔐':'✍️'}</td>
+        <td style="max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.base_product_name||'—')}</td>
+        <td>${d.discount_pct>0?`<span class="pill a">${Math.round(d.discount_pct)}٪</span>`:'<span class="pill zero">0٪</span>'}</td>
+        <td>${d.coupon?`<span class="ordtag">${esc(d.coupon)}</span>`:'—'}</td>
+        <td class="num">${SAR(d.cart_value)}</td>
+        <td class="comm">${SAR2(d.commission)}</td>
+        <td><span class="pill ${st[1]}" id="st-${d.id}">${st[0]}</span></td>
+        <td><div class="act">
+          ${d.status!=='approved'?`<button class="ap" onclick="review(${d.id},'approve')">اعتماد</button>`:''}
+          ${d.status!=='rejected'?`<button class="rj" onclick="review(${d.id},'reject')">رفض</button>`:''}
+          ${d.status!=='pending'?`<button class="un" onclick="review(${d.id},'pending')">تعليق</button>`:''}
+        </div></td>
+        <td class="date">${fmtDate(d.created_at)}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+async function review(id,action){
+  try{
+    const r=await fetch(`${API}/review${KEY?'?key='+encodeURIComponent(KEY):''}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,action})});
+    const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'فشل');
+    toast(action==='approve'?'✅ اعتُمدت':action==='reject'?'تم الرفض':'أُعيدت للتعليق');
+    load();
+  }catch(e){ toast('⚠️ '+e.message,true); }
+}
+function fmtDate(s){ try{ return new Date(s).toLocaleDateString('ar-SA',{day:'numeric',month:'short'}); }catch{ return ''; } }
+load();
+</script>
+</body>
+</html>

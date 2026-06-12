@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>سجل التدقيق | كابتن QAYDAO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2f1ec; --surface:#fff; --surface-2:#faf9f5;
+  --ink:#13211b; --muted:#6d7a72; --line:#e6e3da;
+  --brand:#0b6e4f; --brand-d:#06502f; --brand-soft:#e4f1ea;
+  --gold:#a8801f; --gold-soft:#f6efd8; --gold-line:#e7d8a8;
+  --danger:#b3402f; --danger-soft:#f7e4e1;
+  --r:18px; --sh-1:0 1px 2px rgba(19,33,27,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans Arabic',system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased;padding-bottom:48px;
+  background-image:radial-gradient(circle at 100% 0,rgba(11,110,79,.05),transparent 38%)}
+.wrap{max-width:880px;margin:0 auto;padding:16px}
+header{position:sticky;top:0;z-index:30;background:rgba(242,241,236,.86);backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line)}
+.hd{max-width:880px;margin:0 auto;padding:13px 16px;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.back{width:36px;height:36px;border-radius:11px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:15px;cursor:pointer;text-decoration:none;color:var(--ink)}
+.hd h1{font-size:16px;font-weight:700}
+.hd .sub{font-size:11px;color:var(--muted);font-weight:500;margin-top:-2px}
+.who{margin-right:auto;display:flex;align-items:center;gap:7px;background:#fff;border:1.5px solid var(--gold-line);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700}
+.who .av{width:22px;height:22px;border-radius:50%;background:linear-gradient(140deg,#c9a33e,var(--gold));color:#fff;display:grid;place-items:center;font-size:10px}
+.filters{display:flex;gap:9px;flex-wrap:wrap;margin:15px 0}
+.filters select,.filters input{border:1.5px solid var(--line);border-radius:11px;padding:9px 12px;font-family:inherit;font-size:12.5px;font-weight:600;background:#fff;color:var(--ink)}
+.filters select:focus,.filters input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:15px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 13px;box-shadow:var(--sh-1)}
+.kpi .k{font-size:10.5px;color:var(--muted);font-weight:600}
+.kpi .v{font-size:18px;font-weight:700;margin-top:2px}
+.entry{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-1);padding:13px 15px;margin-bottom:10px;animation:rise .3s ease both}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.e-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.av{width:30px;height:30px;border-radius:50%;background:linear-gradient(140deg,#c9a33e,var(--gold));color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0}
+.e-name{font-size:13px;font-weight:700}
+.vb{font-size:12px}
+.tag{font-size:10px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.e-time{margin-right:auto;font-size:10.5px;color:var(--muted);font-weight:500;white-space:nowrap}
+.e-sum{font-size:13px;font-weight:500;margin-top:7px;line-height:1.7}
+.e-det{margin-top:9px;background:var(--surface-2);border:1px dashed var(--line);border-radius:11px;padding:9px 12px;font-size:11.5px;line-height:1.75;display:none;white-space:pre-wrap;word-break:break-word}
+.e-det b{color:var(--brand-d)}
+.showdet{background:none;border:none;color:var(--brand);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:6px;text-decoration:underline}
+.empty,.loading{padding:46px;text-align:center;color:var(--muted);font-size:13px}
+.more{display:block;margin:14px auto;background:#fff;border:1.5px solid var(--line);border-radius:11px;padding:10px 22px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--brand-d)}
+</style>
+</head>
+<body>
+<header><div class="hd">
+  <a class="back" href="/products/captain">←</a>
+  <div><h1>📜 سجل التدقيق</h1><div class="sub">مَن فعل ماذا في الكابتن — كل شيء موثّق</div></div>
+  <div class="who" id="who" style="display:none"><span class="av" id="whoAv"></span><span id="whoNm"></span></div>
+</div></header>
+
+<div class="wrap">
+  <div class="filters">
+    <select id="fActor"><option value="">كل الموظفين</option></select>
+    <select id="fAction">
+      <option value="">كل الأفعال</option>
+      <option value="captain.teach">🧠 تعليم الكابتن</option>
+      <option value="faq.update">✏️ تصحيح سؤال</option>
+      <option value="faq.create">➕ إضافة سؤال</option>
+      <option value="faq.review">✅ مراجعة سؤال</option>
+      <option value="faq.delete">🗑 حذف سؤال</option>
+      <option value="learn.approve">👍 اعتماد اقتراح</option>
+      <option value="learn.reject">👎 رفض اقتراح</option>
+      <option value="doc.create">📄 إنشاء مستند</option>
+      <option value="doc.update">📝 تعديل مستند</option>
+      <option value="doc.delete">🗑 حذف مستند</option>
+      <option value="assistant.instructions">⚙️ تعديل الإعدادات</option>
+      <option value="captain.pause">⏸ إيقاف الكابتن</option>
+      <option value="captain.resume">▶️ تشغيل الكابتن</option>
+    </select>
+    <input type="month" id="fMonth">
+  </div>
+  <div class="kpis" id="kpis"></div>
+  <div id="list"><div class="loading">جارٍ التحميل…</div></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const initials=n=>String(n||'؟').trim().charAt(0);
+const ACTION_META={
+  'captain.teach':['🧠','تعليم','#e4f1ea;color:#06502f'],
+  'faq.update':['✏️','تصحيح','#f6efd8;color:#8a6d1c'],
+  'faq.create':['➕','إضافة سؤال','#e4f1ea;color:#06502f'],
+  'faq.review':['✅','مراجعة','#e4f1ea;color:#06502f'],
+  'faq.delete':['🗑','حذف سؤال','#f7e4e1;color:#b3402f'],
+  'learn.approve':['👍','اعتماد اقتراح','#e4f1ea;color:#06502f'],
+  'learn.reject':['👎','رفض اقتراح','#f7e4e1;color:#b3402f'],
+  'doc.create':['📄','مستند جديد','#e4f1ea;color:#06502f'],
+  'doc.update':['📝','تعديل مستند','#f6efd8;color:#8a6d1c'],
+  'doc.delete':['🗑','حذف مستند','#f7e4e1;color:#b3402f'],
+  'assistant.instructions':['⚙️','الإعدادات','#f6efd8;color:#8a6d1c'],
+  'captain.pause':['⏸','إيقاف','#f7e4e1;color:#b3402f'],
+  'captain.resume':['▶️','تشغيل','#e4f1ea;color:#06502f'],
+};
+['fActor','fAction','fMonth'].forEach(id=>$(id).addEventListener('change',load));
+
+fetch('/products/api/whoami').then(r=>r.json()).then(j=>{
+  if(j.ok&&j.actor){ $('who').style.display='flex'; $('whoAv').textContent=initials(j.actor.name);
+    $('whoNm').textContent=j.actor.name+(j.actor.verified?' ✅':''); }
+}).catch(()=>{});
+
+async function load(){
+  $('list').innerHTML='<div class="loading">جارٍ التحميل…</div>';
+  const p=new URLSearchParams();
+  if($('fActor').value) p.set('actor',$('fActor').value);
+  if($('fAction').value) p.set('action',$('fAction').value);
+  if($('fMonth').value) p.set('month',$('fMonth').value);
+  p.set('limit','150');
+  try{
+    const r=await fetch('/products/api/captain/audit?'+p.toString());
+    const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'خطأ');
+    renderActors(j.actors); renderKpis(j); renderList(j.entries);
+  }catch(e){
+    $('list').innerHTML=`<div class="empty">⚠️ ${esc(e.message)}</div>`;
+  }
+}
+function renderActors(actors){
+  const sel=$('fActor'), cur=sel.value;
+  sel.innerHTML='<option value="">كل الموظفين</option>'+(actors||[]).map(a=>`<option value="${esc(a.actor_name)}">${esc(a.actor_name)} (${a.n})</option>`).join('');
+  sel.value=cur;
+}
+function renderKpis(j){
+  const total=j.entries.length;
+  const byAction={};
+  j.entries.forEach(e=>{ byAction[e.action]=(byAction[e.action]||0)+1; });
+  const top=Object.entries(byAction).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  $('kpis').innerHTML=`<div class="kpi"><div class="k">إجمالي الإجراءات المعروضة</div><div class="v">${total}</div></div>`+
+    top.map(([a,n])=>{const m=ACTION_META[a]||['•',a];return `<div class="kpi"><div class="k">${m[0]} ${m[1]}</div><div class="v">${n}</div></div>`;}).join('');
+}
+function renderList(entries){
+  if(!entries.length){ $('list').innerHTML='<div class="empty">لا إجراءات مسجّلة بعد — أول تعديل على الكابتن سيظهر هنا فوراً</div>'; return; }
+  $('list').innerHTML=entries.map(e=>{
+    const m=ACTION_META[e.action]||['•',e.action,'#eee;color:#666'];
+    const det=e.details?fmtDetails(e.details):'';
+    return `<div class="entry">
+      <div class="e-top">
+        <span class="av">${esc(initials(e.actor_name))}</span>
+        <span class="e-name">${esc(e.actor_name)}</span>
+        <span class="vb" title="${e.verified?'هوية موثقة من Chatwoot':'دخول بكلمة المرور المشتركة'}">${e.verified?'🔐':'✍️'}</span>
+        <span class="tag" style="background:${m[2]}">${m[0]} ${m[1]}</span>
+        <span class="e-time">${fmtTime(e.created_at)}</span>
+      </div>
+      <div class="e-sum">${esc(e.summary)}</div>
+      ${det?`<button class="showdet" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">التفاصيل ▾</button><div class="e-det">${det}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function fmtDetails(d){
+  try{
+    const o=typeof d==='string'?JSON.parse(d):d;
+    let out='';
+    if(o.before&&o.after){
+      out+=`<b>قبل:</b> ${esc(typeof o.before==='string'?o.before:(o.before.question?o.before.question+' — ':'')+(o.before.answer||JSON.stringify(o.before)))}\n`;
+      out+=`<b>بعد:</b> ${esc(typeof o.after==='string'?o.after:(o.after.question?o.after.question+' — ':'')+(o.after.answer||JSON.stringify(o.after)))}`;
+    } else {
+      if(o.question) out+=`<b>السؤال:</b> ${esc(o.question)}\n`;
+      if(o.answer) out+=`<b>الجواب:</b> ${esc(o.answer)}\n`;
+      if(o.reason) out+=`<b>السبب:</b> ${esc(o.reason)}\n`;
+      if(o.name) out+=`<b>الاسم:</b> ${esc(o.name)}\n`;
+      if(!out) out=esc(JSON.stringify(o,null,1));
+    }
+    return out.trim();
+  }catch{ return ''; }
+}
+function fmtTime(s){ try{ const d=new Date(s); return d.toLocaleDateString('ar-SA',{day:'numeric',month:'short'})+' · '+d.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}); }catch{ return ''; } }
+load();
+</script>
+</body>
+</html>

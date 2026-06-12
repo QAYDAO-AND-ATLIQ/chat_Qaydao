@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>QAYDAO Products · تسجيل الدخول</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Cairo', sans-serif; }
+  .gradient-bg { background: linear-gradient(135deg, #7a875c 0%, #5e6a47 100%); }
+</style>
+</head>
+<body class="min-h-screen gradient-bg flex items-center justify-center p-4">
+  <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
+    <div class="text-center mb-8">
+      <div class="w-20 h-20 bg-gradient-to-br from-[#7a875c] to-[#5e6a47] rounded-2xl mx-auto flex items-center justify-center text-white font-black text-3xl shadow-lg mb-4">Q</div>
+      <h1 class="text-2xl font-bold text-gray-800">إدارة المنتجات</h1>
+      <p class="text-sm text-gray-500 mt-1">QAYDAO Products System</p>
+    </div>
+    <form id="loginForm" class="space-y-4">
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">كلمة المرور</label>
+        <input type="password" id="password" required autofocus
+          class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#7a875c] transition text-lg"
+          placeholder="••••••••" />
+      </div>
+      <div id="errorBox" class="hidden p-3 bg-red-50 text-red-700 rounded-lg text-sm text-center border border-red-200"></div>
+      <button type="submit" id="submitBtn"
+        class="w-full bg-gradient-to-r from-[#7a875c] to-[#5e6a47] text-white py-3 rounded-xl font-bold text-lg hover:shadow-lg transition">
+        دخول 🔐
+      </button>
+    </form>
+    <div class="mt-6 pt-6 border-t border-gray-200 text-center text-xs text-gray-400">
+      © 2026 QAYDAO · إدارة المنتجات الذكية
+    </div>
+  </div>
+
+<script>
+const form = document.getElementById('loginForm');
+const errorBox = document.getElementById('errorBox');
+const submitBtn = document.getElementById('submitBtn');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errorBox.classList.add('hidden');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'جاري التحقق...';
+
+  try {
+    const r = await fetch('/products/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: document.getElementById('password').value })
+    });
+    const data = await r.json();
+    if (r.ok && data.success) {
+      window.location.href = '/products';
+    } else {
+      errorBox.textContent = '❌ ' + (data.error || 'كلمة المرور غير صحيحة');
+      errorBox.classList.remove('hidden');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'دخول 🔐';
+    }
+  } catch (err) {
+    errorBox.textContent = '❌ خطأ في الاتصال';
+    errorBox.classList.remove('hidden');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'دخول 🔐';
+  }
+});
+</script>
+</body>
+</html>

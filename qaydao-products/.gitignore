@@ -1,0 +1,22 @@
+# Secrets — NEVER commit
+.env
+.env.*
+*.key
+*.pem
+
+# Dependencies
+node_modules/
+
+# Operational / regenerable data
+logs/
+backups/
+data/
+uploads/
+*.sqlite
+*.sqlite-backup
+.last-backup
+
+# Local edit backups
+*.bak
+*.bak-*
+*.pre-*

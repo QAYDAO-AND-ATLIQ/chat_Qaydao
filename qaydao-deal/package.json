@@ -1,0 +1,17 @@
+{
+  "name": "qaydao-deal",
+  "version": "1.0.0",
+  "description": "QAYDAO Deal — مساعد التفاوض وزيادة سلة العميل (خدمة معزولة، قراءة فقط من كتالوج المنتجات)",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.0.0",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "pg": "^8.13.0"
+  }
+}

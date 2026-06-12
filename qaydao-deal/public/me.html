@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>متابعتي | مساعد الصفقة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2f1ec; --surface:#fff; --surface-2:#faf9f5;
+  --ink:#13211b; --muted:#6d7a72; --line:#e6e3da;
+  --brand:#0b6e4f; --brand-d:#06502f; --brand-soft:#e4f1ea;
+  --gold:#a8801f; --gold-l:#c9a33e; --gold-soft:#f6efd8; --gold-line:#e7d8a8;
+  --r:18px;
+  --sh-1:0 1px 2px rgba(19,33,27,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'IBM Plex Sans Arabic',system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.7;-webkit-font-smoothing:antialiased;padding-bottom:44px;
+  background-image:radial-gradient(circle at 100% 0,rgba(168,128,31,.06),transparent 40%),radial-gradient(circle at 0 16%,rgba(11,110,79,.05),transparent 32%)}
+.wrap{max-width:640px;margin:0 auto;padding:14px}
+header{position:sticky;top:0;z-index:40;background:rgba(242,241,236,.86);backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line)}
+.hd{max-width:640px;margin:0 auto;padding:11px 14px;display:flex;align-items:center;gap:11px}
+.back{width:36px;height:36px;border-radius:11px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:16px;cursor:pointer;text-decoration:none;color:var(--ink);flex-shrink:0}
+.hd h1{font-size:16px;font-weight:700}
+.hd .sub{font-size:11px;color:var(--muted);font-weight:500;margin-top:-3px}
+.monthsel{margin-right:auto}
+.monthsel input{border:1.5px solid var(--line);border-radius:10px;padding:7px 10px;font-family:inherit;font-size:12.5px;font-weight:600;background:#fff;color:var(--ink)}
+.monthsel input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+
+.hero{background:linear-gradient(150deg,var(--brand) 0%,var(--brand-d) 100%);border-radius:22px;padding:21px 19px;color:#fff;margin-bottom:14px;position:relative;overflow:hidden;animation:rise .4s ease both;box-shadow:0 10px 30px rgba(11,110,79,.3)}
+.hero::after{content:'';position:absolute;left:-40px;top:-40px;width:170px;height:170px;border-radius:50%;background:rgba(255,255,255,.07)}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.hero .who{display:flex;align-items:center;gap:11px;margin-bottom:15px}
+.hero .av{width:46px;height:46px;border-radius:50%;background:linear-gradient(140deg,var(--gold-l),var(--gold));display:grid;place-items:center;font-size:19px;font-weight:700;flex-shrink:0;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.hero .nm{font-size:17px;font-weight:700}
+.hero .rk{font-size:12px;font-weight:600;opacity:.88}
+.hero .comm-l{font-size:11.5px;font-weight:600;opacity:.85}
+.hero .comm-v{font-size:38px;font-weight:700;letter-spacing:-1px;line-height:1.15;color:#ffe9b0}
+.hero .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:15px}
+.hero .mini{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:13px;padding:9px 11px}
+.hero .mini .l{font-size:10px;font-weight:600;opacity:.82}
+.hero .mini .v{font-size:15.5px;font-weight:700;margin-top:1px}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-1);padding:16px;margin-bottom:13px;animation:rise .4s ease both}
+.ttl{font-size:13.5px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.badges{display:flex;gap:9px;flex-wrap:wrap}
+.badge{display:flex;align-items:center;gap:7px;background:linear-gradient(150deg,#fdfbf3,var(--gold-soft));border:1px solid var(--gold-line);border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;color:#6b5310;animation:pop .3s ease both}
+@keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+.badge .ic{font-size:15px}
+.badge.locked{background:var(--surface-2);border-color:var(--line);color:var(--muted);opacity:.7}
+.empty{padding:26px 14px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.8}
+
+.lb{display:flex;flex-direction:column;gap:8px}
+.lb-row{display:flex;align-items:center;gap:11px;background:var(--surface-2);border:1px solid var(--line);border-radius:13px;padding:10px 13px}
+.lb-row.me{background:linear-gradient(150deg,#fdfbf3,var(--gold-soft));border-color:var(--gold-line)}
+.lb-row .pos{width:27px;height:27px;border-radius:9px;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--brand-soft);color:var(--brand-d);flex-shrink:0}
+.lb-row:first-child .pos{background:var(--gold-soft);color:var(--gold)}
+.lb-row .nm{font-size:13px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-row .d{font-size:10.5px;color:var(--muted);font-weight:600}
+.lb-row .c{font-size:13.5px;font-weight:700;color:var(--gold);white-space:nowrap}
+
+.deal{display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px dashed var(--line)}
+.deal:last-child{border-bottom:none}
+.deal .ic{width:36px;height:36px;border-radius:11px;background:var(--brand-soft);display:grid;place-items:center;font-size:15px;flex-shrink:0}
+.deal .inf{flex:1;min-width:0}
+.deal .nm{font-size:12.5px;font-weight:600;line-height:1.45;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.deal .mt{font-size:10.5px;color:var(--muted);font-weight:500}
+.deal .c{font-size:13px;font-weight:700;color:var(--gold);white-space:nowrap}
+.deal .cv{display:block;font-size:10px;color:var(--muted);font-weight:500;text-align:left}
+.ordtag{font-family:ui-monospace,monospace;font-size:10.5px;font-weight:600;color:var(--brand-d)}
+
+.motiv{background:linear-gradient(150deg,#fdfbf3,var(--gold-soft));border:1px solid var(--gold-line);border-radius:var(--r);padding:14px 16px;font-size:13px;font-weight:600;color:#6b5310;line-height:1.8;margin-bottom:13px;animation:rise .4s ease both}
+.loading{padding:40px;text-align:center;color:var(--muted);font-size:13px}
+.gate{padding:30px 16px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.9}
+.gate a{color:var(--brand);font-weight:700}
+</style>
+</head>
+<body>
+<header><div class="hd">
+  <a class="back" id="backBtn">←</a>
+  <div><h1>متابعتي</h1><div class="sub">صفقاتك وعمولاتك</div></div>
+  <div class="monthsel"><input type="month" id="month"></div>
+</div></header>
+
+<div class="wrap" id="page"><div class="loading">جارٍ التحميل…</div></div>
+
+<script>
+const urlKey=new URLSearchParams(location.search).get('key')||'';
+if(urlKey){ try{ localStorage.setItem('qaydao_deal_key',urlKey); }catch{} }
+let KEY=''; try{ KEY=urlKey||localStorage.getItem('qaydao_deal_key')||''; }catch{ KEY=urlKey; }
+const API='/deal/api';
+const SAR=n=>new Intl.NumberFormat('ar-SA',{maximumFractionDigits:0}).format(Math.round(n||0))+' ر.س';
+const SAR2=n=>new Intl.NumberFormat('ar-SA',{maximumFractionDigits:1}).format(n||0)+' ر.س';
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $=id=>document.getElementById(id);
+const initials=n=>String(n||'؟').trim().charAt(0);
+$('backBtn').href=`/deal${KEY?'?key='+encodeURIComponent(KEY):''}`;
+const monthEl=$('month'); monthEl.value=new Date().toISOString().slice(0,7);
+monthEl.addEventListener('change',load);
+
+let EMP=null; try{ EMP=JSON.parse(localStorage.getItem('qaydao_deal_emp')||'null'); }catch{}
+
+const ALL_BADGES=[
+  {icon:'🌟',name:'أول صفقة'},{icon:'🔥',name:'10 صفقات'},
+  {icon:'👑',name:'سلة ذهبية +3000'},{icon:'🧲',name:'ملك المكمّلات'},{icon:'🏆',name:'المركز الأول'}
+];
+
+function motivation(j){
+  if(!j.me.deals) return '💪 الشهر لسه في أوله — أول صفقة تسجّلها تفتح شارتك الأولى. يلا!';
+  if(j.rank===1) return `👑 أنت في الصدارة بـ ${SAR2(j.me.comm)} — حافظ على المركز، المنافسة خلفك!`;
+  if(j.rank===2) return `🔥 المركز الثاني! تفصلك خطوات عن القمة — مكمّل واحد إضافي في كل صفقة يقلب الترتيب.`;
+  if(j.me.addons_sold<j.me.deals) return `💡 سرّ العمولة الكبيرة: المكمّلات. عندك ${j.me.deals} صفقة لكن ${j.me.addons_sold} مكمّل فقط — استهدف مكمّلين لكل صفقة.`;
+  return `📈 شغل ممتاز يا بطل — ${j.me.deals} صفقة ومتوسط سلة ${SAR(j.me.avg_cart)}. كمّل بنفس الوتيرة!`;
+}
+
+async function load(){
+  if(!EMP||!EMP.id){
+    $('page').innerHTML=`<div class="card"><div class="gate">👋 لم تختر اسمك بعد<br>ارجع إلى <a href="/deal${KEY?'?key='+encodeURIComponent(KEY):''}">مساعد الصفقة</a> واختر اسمك أولاً</div></div>`;
+    return;
+  }
+  $('page').innerHTML='<div class="loading">جارٍ التحميل…</div>';
+  const month=monthEl.value||new Date().toISOString().slice(0,7);
+  try{
+    const r=await fetch(`${API}/me?employee_id=${encodeURIComponent(EMP.id)}&month=${month}${KEY?'&key='+encodeURIComponent(KEY):''}`);
+    const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'خطأ');
+    render(j);
+  }catch(e){
+    $('page').innerHTML=`<div class="card"><div class="empty">⚠️ تعذّر التحميل: ${esc(e.message)}<br><br><a href="javascript:load()" style="color:var(--brand);font-weight:700">إعادة المحاولة</a></div></div>`;
+  }
+}
+
+function render(j){
+  const unlocked=new Set(j.badges.map(b=>b.name));
+  $('page').innerHTML=`
+  <div class="hero">
+    <div class="who">
+      <div class="av">${esc(initials(EMP.name))}</div>
+      <div><div class="nm">${esc(EMP.name)}</div>
+      <div class="rk">${j.rank?`🏆 ترتيبك #${j.rank} من ${j.total_employees}`:'لم تسجّل صفقات هذا الشهر بعد'}</div></div>
+    </div>
+    <div class="comm-l">💰 عمولتك هذا الشهر</div>
+    <div class="comm-v">${SAR2(j.me.comm)}</div>
+    <div style="display:flex;gap:13px;font-size:11.5px;font-weight:600;margin-top:3px">
+      <span style="opacity:.92">✅ معتمد: ${SAR2(j.me.comm_approved)}</span>
+      <span style="opacity:.78">⏳ بانتظار التدقيق: ${SAR2(j.me.comm_pending)}</span>
+    </div>
+    <div class="grid">
+      <div class="mini"><div class="l">📦 الصفقات</div><div class="v">${j.me.deals}</div></div>
+      <div class="mini"><div class="l">🛒 متوسط السلة</div><div class="v">${SAR(j.me.avg_cart)}</div></div>
+      <div class="mini"><div class="l">🧲 مكمّلات بِعتها</div><div class="v">${j.me.addons_sold}</div></div>
+    </div>
+  </div>
+
+  <div class="motiv">${motivation(j)}</div>
+
+  <div class="card">
+    <div class="ttl">🎖️ شاراتك</div>
+    <div class="badges">${ALL_BADGES.map(b=>
+      `<span class="badge ${unlocked.has(b.name)?'':'locked'}"><span class="ic">${b.icon}</span>${b.name}</span>`).join('')}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ttl">🏆 صدارة الشهر</div>
+    ${j.leaderboard.length?`<div class="lb">${j.leaderboard.map((r,i)=>
+      `<div class="lb-row ${r.name===EMP.name?'me':''}">
+        <span class="pos">${i+1}</span>
+        <span class="nm">${esc(r.name)}${r.name===EMP.name?' (أنت)':''}</span>
+        <span class="d">${r.deals} صفقة</span>
+        <span class="c">${SAR2(r.comm)}</span>
+      </div>`).join('')}</div>`
+    :'<div class="empty">لا صفقات مسجّلة هذا الشهر — كن الأول! 🚀</div>'}
+  </div>
+
+  <div class="card">
+    <div class="ttl">🧾 آخر صفقاتك</div>
+    ${j.recent.length?j.recent.map(d=>
+      `<div class="deal">
+        <span class="ic">🪑</span>
+        <span class="inf">
+          <span class="nm">${esc(d.base_product_name||'صفقة')}</span>
+          <span class="mt"><span class="ordtag">#${esc(d.order_number)}</span> · خصم ${Math.round(d.discount_pct)}٪${d.coupon?` · 🎟️ ${esc(d.coupon)}`:''} · ${d.status==='approved'?'✅ معتمدة':d.status==='rejected'?'✕ مرفوضة':'⏳ معلّقة'} · ${fmtDate(d.created_at)}</span>
+        </span>
+        <span class="c">+${SAR2(d.commission)}<span class="cv">سلة ${SAR(d.cart_value)}</span></span>
+      </div>`).join('')
+    :'<div class="empty">سجّل أول صفقة لك من مساعد الصفقة 💪</div>'}
+  </div>`;
+}
+function fmtDate(s){ try{ return new Date(s).toLocaleDateString('ar-SA',{day:'numeric',month:'short'}); }catch{ return ''; } }
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+node_modules/
+.env
+.ro_credentials
+*.log
+npm-debug.log*
+*.bak*
+public/*.v*-bak
