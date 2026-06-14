@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://chatwoot-redis:6379/3"
     DEDUP_TTL_SECONDS: int = 86400  # 24h
 
+    # After-hours deferred WhatsApp push (option B)
+    OOH_GRACE_SECONDS: int = 60       # wait before sending the WA template
+    OOH_SKIP_IF_REPLIED: bool = True  # skip WA if AI/agent replied on widget
+
     # Webhook security
     WEBHOOK_SECRET: str
 
