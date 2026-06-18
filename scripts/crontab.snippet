@@ -1,0 +1,9 @@
+# Cron entries for Chatwoot host-side automation (NOT auto-applied — host state).
+# Install with:  crontab -l | { cat; cat scripts/crontab.snippet; } | crontab -
+# (or paste the line below into `crontab -e`)
+
+# ActionCable fan-out self-heal watchdog — runs every minute.
+# Restarts chatwoot_web ONLY when there is live WS traffic but zero Redis
+# pub/sub subscribers (the "messages only show after manual refresh" bug).
+# Hardened: 2-strike confirm + 10min cooldown + safe-on-monitoring-failure.
+* * * * * /root/chat-qaydao/scripts/chatwoot_cable_watchdog.sh >/dev/null 2>&1
