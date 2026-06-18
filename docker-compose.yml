@@ -21,6 +21,8 @@ services:
     command: redis-server --requirepass ${REDIS_PASSWORD}
     networks:
       - chatwoot-internal
+    ports:
+      - "127.0.0.1:6385:6379"
     volumes:
       - chatwoot-redis-data:/data
 
@@ -72,6 +74,7 @@ services:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
+      - SIDEKIQ_CONCURRENCY=20
     env_file:
       - .env
     command: ['sh', '-c', 'sh /app/qaydao-startup-patch.sh || true; exec bundle exec sidekiq -C config/sidekiq.yml']
@@ -83,6 +86,39 @@ services:
     volumes:
       - chatwoot-storage:/app/storage
       # QAYDAO patch: same as chatwoot-web
+      - ./patches/services/messages/in_reply_to_message_builder.rb:/app/app/services/messages/in_reply_to_message_builder.rb:ro
+      - ./patches/enterprise/app/services/captain/llm/system_prompts_service.rb:/app/enterprise/app/services/captain/llm/system_prompts_service.rb:ro
+      - ./patches/enterprise/app/services/captain/assistant/agent_runner_service.rb:/app/enterprise/app/services/captain/assistant/agent_runner_service.rb:ro
+      - ./patches/finders/conversation_finder.rb:/app/app/finders/conversation_finder.rb:ro
+      - ./patches/jobs/qaydao_retry_unassigned_conversations_job.rb:/app/app/jobs/qaydao_retry_unassigned_conversations_job.rb:ro
+      - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
+      - ./patches/initializers/qaydao_captain_resolution_guard.rb:/app/config/initializers/qaydao_captain_resolution_guard.rb:ro
+      - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
+      - ./patches/initializers/zz_qaydao_rack_attack_login.rb:/app/config/initializers/zz_qaydao_rack_attack_login.rb:ro
+      - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
+      - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
+      - ./patches/qaydao_captain_no_interrupt.rb:/app/config/initializers/qaydao_captain_no_interrupt.rb:ro
+      - ./patches/qaydao_custom_filter_order.rb:/app/config/initializers/qaydao_custom_filter_order.rb:ro
+
+  chatwoot-sidekiq-captain:
+    image: chatwoot/chatwoot:v4.13.0
+    container_name: chatwoot_sidekiq_captain
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+      - SIDEKIQ_CONCURRENCY=20
+    env_file:
+      - .env
+    command: ['sh', '-c', 'sh /app/qaydao-startup-patch.sh || true; exec bundle exec sidekiq -C config/sidekiq.yml -q critical -q high -q default']
+    depends_on:
+      - chatwoot-postgres
+      - chatwoot-redis
+    networks:
+      - chatwoot-internal
+    volumes:
+      - chatwoot-storage:/app/storage
       - ./patches/services/messages/in_reply_to_message_builder.rb:/app/app/services/messages/in_reply_to_message_builder.rb:ro
       - ./patches/enterprise/app/services/captain/llm/system_prompts_service.rb:/app/enterprise/app/services/captain/llm/system_prompts_service.rb:ro
       - ./patches/enterprise/app/services/captain/assistant/agent_runner_service.rb:/app/enterprise/app/services/captain/assistant/agent_runner_service.rb:ro
