@@ -1,0 +1,31 @@
+# Secrets — NEVER commit
+.env
+.env.*
+!.env.template
+!.env.example
+
+# Backups (timestamped working copies)
+*.bak
+*.bak-*
+*.orig
+*.orig-*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Transient test/build helpers
+*.b64
+test_*.py
+*_test.py
+seed_rules.py
+inject_*.py
+wire_*.py
+splice_*.py
+build_*.py
+add_css.py
+
+# OS
+.DS_Store
+Thumbs.db

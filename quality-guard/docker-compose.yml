@@ -1,0 +1,40 @@
+# QAYDAO Chatwoot — Agent Quality Guard (SIDECAR)
+# Fully isolated. Does NOT touch chatwoot_production, chatwoot_postgres, or any chatwoot_* container.
+# Joins the existing chatwoot_internal network (external) only to reach chatwoot_web's API.
+services:
+  quality_guard_db:
+    image: postgres:16-alpine
+    container_name: quality_guard_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qguard
+      POSTGRES_PASSWORD: ${QG_DB_PASSWORD}
+      POSTGRES_DB: quality_guard
+    volumes:
+      - quality-guard-pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    networks:
+      - chatwoot-internal
+    # No host port published: DB is reachable only inside chatwoot_internal (more secure).
+
+  quality_guard:
+    build: ./app
+    container_name: quality_guard
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    depends_on:
+      - quality_guard_db
+    networks:
+      - chatwoot-internal
+    ports:
+      - "127.0.0.1:8090:8090"   # localhost-only, like every other chatwoot sidecar
+
+networks:
+  chatwoot-internal:
+    name: chatwoot_internal
+    external: true
+
+volumes:
+  quality-guard-pgdata:
+    name: quality_guard_pgdata
