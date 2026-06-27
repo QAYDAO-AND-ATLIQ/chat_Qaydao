@@ -11,7 +11,7 @@ Hard guarantees:
 import os, io, csv, datetime, json
 import asyncpg, httpx
 from fastapi import FastAPI, Request, Response, Query
-from classifier import classify, classify_first_reply, classify_closing, snippet
+from classifier import classify, classify_first_reply, classify_closing, snippet, is_opening_template
 import report_ui
 import sla
 import asyncio
@@ -126,6 +126,7 @@ async def webhook(request: Request, secret: str = Query(default="")):
         # customer (Contact) message -> start first-response SLA timer; bots -> ignore completely
         if str(sender_type).lower() in ("contact",) and not bool(msg.get("private")):
             await sla.on_customer_message(pool, conv, msg)
+            await _mark_customer_engaged(conv.get("id") or msg.get("conversation_id"))
         return {"skip": "not_human:" + str(sender_type)}
     # extra guard: exclude known bot user ids and any AI-assistant identities by name/email
     _sid = sender.get("id")
@@ -171,13 +172,16 @@ async def webhook(request: Request, secret: str = Query(default="")):
         if pol:
             fired.append(pol)
 
-    # 2) greeting check — only on the FIRST agent external reply in this conversation
-    if not is_priv:
-        first = await _is_first_agent_reply(conv_id, msg.get("id"))
-        if first:
-            g = classify_first_reply(msg.get("content", ""))
-            if g:
-                fired.append(g)
+    # 2) greeting check — only on the FIRST agent external reply, only AFTER the customer
+    #    has engaged (so business-initiated WhatsApp openers are not evaluated), and never
+    #    on the approved outreach opening template.
+    if not is_priv and not is_opening_template(msg.get("content", "")):
+        if await _customer_has_engaged(conv_id):
+            first = await _is_first_agent_reply(conv_id, msg.get("id"))
+            if first:
+                g = classify_first_reply(msg.get("content", ""))
+                if g:
+                    fired.append(g)
 
     if not fired:
         return {"classified": "safe"}
@@ -197,16 +201,37 @@ def _fmt_note(res):
             f"\u0627\u0644\u0645\u0642\u062a\u0631\u062d: {res['suggested_correction']}")
 
 
-async def _is_first_agent_reply(conv_id, message_id):
-    """True if no prior agent external reply was recorded for this conversation."""
+async def _mark_customer_engaged(conv_id):
+    if not conv_id:
+        return
     p = await pool()
     async with p.acquire() as c:
-        seen = await c.fetchval("SELECT 1 FROM qg_seen_conversations WHERE conversation_id=$1", conv_id)
-        if seen:
+        await c.execute(
+            "INSERT INTO qg_seen_conversations (conversation_id, customer_engaged) VALUES ($1, TRUE) "
+            "ON CONFLICT (conversation_id) DO UPDATE SET customer_engaged=TRUE", conv_id)
+
+
+async def _customer_has_engaged(conv_id):
+    if not conv_id:
+        return False
+    p = await pool()
+    async with p.acquire() as c:
+        return bool(await c.fetchval(
+            "SELECT customer_engaged FROM qg_seen_conversations WHERE conversation_id=$1", conv_id))
+
+
+async def _is_first_agent_reply(conv_id, message_id):
+    """True if no prior agent external reply was recorded (first_message_id still NULL).
+    Decoupled from row existence, since the row may already exist from customer engagement."""
+    p = await pool()
+    async with p.acquire() as c:
+        row = await c.fetchrow("SELECT first_message_id FROM qg_seen_conversations WHERE conversation_id=$1", conv_id)
+        if row and row["first_message_id"] is not None:
             return False
         await c.execute(
             "INSERT INTO qg_seen_conversations (conversation_id, first_message_id) VALUES ($1,$2) "
-            "ON CONFLICT (conversation_id) DO NOTHING", conv_id, message_id)
+            "ON CONFLICT (conversation_id) DO UPDATE SET first_message_id=EXCLUDED.first_message_id "
+            "WHERE qg_seen_conversations.first_message_id IS NULL", conv_id, message_id)
         return True
 
 

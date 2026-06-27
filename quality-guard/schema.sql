@@ -108,3 +108,6 @@ CREATE TABLE IF NOT EXISTS qg_audit_log (
     old_value TEXT, new_value TEXT, created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_qg_audit_created ON qg_audit_log (created_at);
+
+-- WhatsApp outreach: track customer engagement so greeting is evaluated only after the customer replies
+ALTER TABLE qg_seen_conversations ADD COLUMN IF NOT EXISTS customer_engaged BOOLEAN DEFAULT FALSE;

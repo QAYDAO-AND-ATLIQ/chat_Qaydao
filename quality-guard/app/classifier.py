@@ -223,10 +223,30 @@ def classify(*, body: str, is_private: bool, message_type: str):
     return None
 
 
+# Approved WhatsApp opening templates (outreach openers sent BEFORE customer engages).
+# These are pre-approved business-initiated messages, not a customer-service reply,
+# so they must NOT trigger missing_greeting. Matched by distinctive normalized phrases.
+OPENING_TEMPLATE_MARKERS = _norm_list([
+    "هل الوقت مناسب الان",
+    "نود التواصل معك هل الوقت مناسب",
+    "تحيه طيبه من فريق كواي داو نود التواصل",
+    "عميلنا العزيز تحيه طيبه من فريق كواي داو",
+])
+
+def is_opening_template(body: str) -> bool:
+    t = normalize(body or "")
+    if not t:
+        return False
+    return any(m and m in t for m in OPENING_TEMPLATE_MARKERS)
+
+
 def classify_first_reply(body: str):
     """section 6: first human reply must greet + name + brand. Returns dict or None."""
     t = normalize(body or "")
     if not t:
+        return None
+    # approved outreach opening template -> not a missing greeting
+    if is_opening_template(body):
         return None
     has_hello = bool(_hit(t, GREET_HELLO))
     has_self  = bool(_hit(t, GREET_SELF))
