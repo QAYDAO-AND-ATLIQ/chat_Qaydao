@@ -121,7 +121,7 @@ async def webhook(request: Request, secret: str = Query(default="")):
     # ONLY human agents are monitored. Everything else (Contact, AgentBot, Captain::Assistant,
     # Captain, bots) is excluded from Quality Guard entirely.
     HUMAN_TYPES = ("user", "User")
-    BOT_USER_IDS = {14}  # Quality Guard bot itself
+    BOT_USER_IDS = {14, 2}  # 14=Quality Guard bot, 2=QAYDAO Admin (system-alerts account, not an agent)
     if sender_type not in HUMAN_TYPES:
         # customer (Contact) message -> start first-response SLA timer; bots -> ignore completely
         if str(sender_type).lower() in ("contact",) and not bool(msg.get("private")):
@@ -131,7 +131,7 @@ async def webhook(request: Request, secret: str = Query(default="")):
     _sid = sender.get("id")
     _sname = (sender.get("name") or "").strip().lower()
     _semail = (sender.get("email") or "").strip().lower()
-    if _sid in BOT_USER_IDS or _sname in ("qaydao ai", "captain", "bot") or "bot@" in _semail:
+    if _sid in BOT_USER_IDS or _sname in ("qaydao ai", "qaydao admin", "captain", "bot") or "bot@" in _semail or _semail == "admin@qaydao.com":
         return {"skip": "bot_excluded"}
 
     is_priv = bool(msg.get("private"))
@@ -232,7 +232,7 @@ async def _handle_resolved(conv):
             sname = (s.get("name") or "").strip().lower()
             if st not in ("user", "User"):
                 continue
-            if s.get("id") == 14 or sname in ("qaydao ai", "captain", "bot"):
+            if s.get("id") in (14, 2) or sname in ("qaydao ai", "qaydao admin", "captain", "bot") or (s.get("email") or "").strip().lower() == "admin@qaydao.com":
                 continue
             last = m
             break
