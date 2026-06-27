@@ -172,16 +172,15 @@ async def webhook(request: Request, secret: str = Query(default="")):
         if pol:
             fired.append(pol)
 
-    # 2) greeting check — only on the FIRST agent external reply, only AFTER the customer
-    #    has engaged (so business-initiated WhatsApp openers are not evaluated), and never
-    #    on the approved outreach opening template.
+    # 2) greeting check — fire on the agent's FIRST reply that comes AFTER the customer has
+    #    engaged. Uses an authoritative Chatwoot lookup (not a local flag) to avoid missed
+    #    webhooks / races. The approved outreach opening template is never evaluated.
     if not is_priv and not is_opening_template(msg.get("content", "")):
-        if await _customer_has_engaged(conv_id):
-            first = await _is_first_agent_reply(conv_id, msg.get("id"))
-            if first:
-                g = classify_first_reply(msg.get("content", ""))
-                if g:
-                    fired.append(g)
+        gstate = await _greeting_should_check(conv_id, msg.get("id"))
+        if gstate:
+            g = classify_first_reply(msg.get("content", ""))
+            if g:
+                fired.append(g)
 
     if not fired:
         return {"classified": "safe"}
@@ -199,6 +198,60 @@ def _fmt_note(res):
             f"\u0627\u0644\u0646\u0648\u0639: {res['alert_type']} | \u0627\u0644\u062e\u0637\u0648\u0631\u0629: {res['severity']}\n"
             f"\u0627\u0644\u0633\u0628\u0628: {res['ai_reason']}\n"
             f"\u0627\u0644\u0645\u0642\u062a\u0631\u062d: {res['suggested_correction']}")
+
+
+async def _greeting_should_check(conv_id, message_id):
+    """Authoritative: True if customer engaged AND this is the first human agent reply,
+    evaluated at most once per conversation."""
+    if not conv_id:
+        return False
+    p = await pool()
+    async with p.acquire() as c:
+        row = await c.fetchrow("SELECT first_message_id FROM qg_seen_conversations WHERE conversation_id=$1", conv_id)
+        if row and row["first_message_id"] is not None:
+            return False  # already evaluated the first reply for this conversation
+    # ask Chatwoot for the conversation's messages
+    url = f"{CHATWOOT_BASE}/api/v1/accounts/{CHATWOOT_ACCOUNT}/conversations/{conv_id}/messages"
+    try:
+        async with httpx.AsyncClient(timeout=10) as cl:
+            r = await cl.get(url, headers={"api_access_token": BOT_TOKEN, "X-Forwarded-Proto": "https"},
+                             params={"per_page": 100})
+        payload = r.json().get("payload", [])
+    except Exception:
+        return False
+    customer_msgs = [m for m in payload if m.get("message_type") == 0]
+    if not customer_msgs:
+        return False  # customer hasn't engaged yet -> outbound opener, don't evaluate
+    # is THIS message the first human (User) agent outgoing reply in the conversation?
+    first_human = None
+    for m in payload:
+        if m.get("message_type") == 1 and not m.get("private"):
+            st = (m.get("sender_type") or (m.get("sender") or {}).get("type") or "")
+            sid = (m.get("sender") or {}).get("id")
+            sname = ((m.get("sender") or {}).get("name") or "").strip().lower()
+            if st in ("user", "User") and sid not in (14, 2) and sname not in ("qaydao ai", "qaydao admin", "captain", "bot"):
+                # the approved outreach template is not a service reply -> skip it,
+                # so the first SUBSTANTIVE human reply is the one evaluated for greeting
+                if is_opening_template(m.get("content", "")):
+                    continue
+                first_human = m
+                break
+    if not first_human or first_human.get("id") != message_id:
+        # mark as evaluated if a human first reply exists but isn't this one (so we don't re-check)
+        if first_human:
+            await _record_first_reply(conv_id, first_human.get("id"))
+        return False
+    await _record_first_reply(conv_id, message_id)
+    return True
+
+
+async def _record_first_reply(conv_id, message_id):
+    p = await pool()
+    async with p.acquire() as c:
+        await c.execute(
+            "INSERT INTO qg_seen_conversations (conversation_id, first_message_id) VALUES ($1,$2) "
+            "ON CONFLICT (conversation_id) DO UPDATE SET first_message_id=EXCLUDED.first_message_id "
+            "WHERE qg_seen_conversations.first_message_id IS NULL", conv_id, message_id)
 
 
 async def _mark_customer_engaged(conv_id):
