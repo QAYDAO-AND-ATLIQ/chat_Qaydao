@@ -20,6 +20,33 @@
 # All idempotent, fail OPEN (any error -> Captain behaves normally), bind-mounted
 # on web + sidekiq, surviving restarts/recreation.
 
+# === QAYDAO no-repeat helper (pure Ruby, unit-testable without Rails) =========
+# Detects "canned" automated replies that must appear AT MOST ONCE per
+# conversation (currently the discount/coupon reply). No AI, deterministic.
+module QaydaoCannedReply
+  module_function
+
+  def normalize(s)
+    s.to_s
+     .tr('أإآ', 'ا').tr('ىئ', 'ي').tr('ة', 'ه').tr('ؤ', 'و')
+     .gsub(/[ًٌٍَُِّْـ]/, '')
+     .downcase
+  end
+
+  # Returns the category of an automated reply that should not repeat in a
+  # conversation, or nil. 'discount' = the coupon/discount-code reply.
+  def category(text)
+    t = normalize(text)
+    return nil if t.strip.empty?
+    has_code = t.include?('كود') || t.include?('كوبون') || t.include?('coupon') || t.include?('promo')
+    has_disc = t.include?('خصم') || t.include?('تخفيض') || t.include?('discount')
+    return 'discount' if has_code && has_disc
+
+    nil
+  end
+end
+
+if defined?(Rails) && Rails.respond_to?(:application)
 Rails.application.config.to_prepare do
   next unless defined?(Captain::Conversation::ResponseBuilderJob)
 
@@ -153,8 +180,35 @@ Rails.application.config.to_prepare do
           Rails.logger.info("[qaydao-debounce] skipped duplicate Captain reply (conv ##{@conversation&.id})")
           return
         end
+        # QAYDAO 2026-06-27 (no-repeat): never send the SAME automated reply twice
+        # in one conversation (esp. the discount/coupon reply). Conversation-wide
+        # (not just the 20s debounce above), deterministic, fail-open. The reason
+        # for suppression is logged for audit/grep ([qaydao-no-repeat]).
+        if (qg_cat = qaydao_repeated_canned_category)
+          Rails.logger.info("[qaydao-no-repeat] conv ##{@conversation&.id} BLOCKED repeat automated reply (category=#{qg_cat}); reason=identical canned reply already sent earlier in this conversation")
+          return
+        end
         super
         qaydao_detect_soft_handoff_and_escalate
+      end
+
+      # Returns the category (e.g. 'discount') of the CURRENT reply IF the bot
+      # already sent a reply of that same category earlier in THIS conversation;
+      # otherwise nil. Looks at the whole conversation, not a time window.
+      def qaydao_repeated_canned_category
+        return nil if @conversation.nil?
+        content = (@response.is_a?(Hash) ? @response['response'] : @response).to_s
+        cat = QaydaoCannedReply.category(content)
+        return nil if cat.nil?
+        already = Conversation.uncached do
+          @conversation.messages
+                       .where(sender_type: 'Captain::Assistant', message_type: :outgoing, private: false)
+                       .order(created_at: :desc).limit(50).pluck(:content)
+        end.any? { |c| QaydaoCannedReply.category(c) == cat }
+        already ? cat : nil
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-no-repeat] check failed conv ##{@conversation&.id}: #{e.message}")
+        nil
       end
 
       def qaydao_duplicate_reply?
@@ -224,6 +278,7 @@ Rails.application.config.to_prepare do
       end
     end
     Captain::Conversation::ResponseBuilderJob.prepend(mod)
-    Rails.logger.info('[qaydao-patch] no-interrupt(v2 window+manual) + json-unwrap + priority-escalate + assign-label applied')
+    Rails.logger.info('[qaydao-patch] no-interrupt(v2 window+manual) + json-unwrap + priority-escalate + assign-label + no-repeat applied')
   end
+end
 end
