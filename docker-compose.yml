@@ -58,6 +58,11 @@ services:
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
       - ./patches/initializers/zz_qaydao_rack_attack_login.rb:/app/config/initializers/zz_qaydao_rack_attack_login.rb:ro
       - ./custom-theme/mailer-base.liquid:/app/app/views/layouts/mailer/base.liquid:ro
+      - ./patches/views/layouts/vueapp.html.erb:/app/app/views/layouts/vueapp.html.erb:ro
+      # QAYDAO patch: super_admin password reset (fix 500 + forgot link)
+      - ./patches/views/super_admin/devise/sessions/new.html.erb:/app/app/views/super_admin/devise/sessions/new.html.erb:ro
+      - ./patches/views/super_admins/passwords/new.html.erb:/app/app/views/super_admins/passwords/new.html.erb:ro
+      - ./patches/views/super_admins/passwords/edit.html.erb:/app/app/views/super_admins/passwords/edit.html.erb:ro
       - ./patches/qaydao-startup-patch.sh:/app/qaydao-startup-patch.sh:ro
       - ./patches/qaydao_captain_no_interrupt.rb:/app/config/initializers/qaydao_captain_no_interrupt.rb:ro
       - ./patches/qaydao_custom_filter_order.rb:/app/config/initializers/qaydao_custom_filter_order.rb:ro
