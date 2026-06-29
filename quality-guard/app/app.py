@@ -137,6 +137,8 @@ async def webhook(request: Request, secret: str = Query(default="")):
 
     is_priv = bool(msg.get("private"))
     conv_id = conv.get("id") or msg.get("conversation_id")
+    # enrich the conversation sidebar with client IP / city / country (idempotent, best-effort)
+    asyncio.create_task(_enrich_client_info(conv_id))
     # agent (human, not the QG bot) external reply clears the first-response timer
     if not is_priv and sender.get("id") != 14:
         await sla.on_agent_reply(pool, conv_id)
@@ -198,6 +200,49 @@ def _fmt_note(res):
             f"\u0627\u0644\u0646\u0648\u0639: {res['alert_type']} | \u0627\u0644\u062e\u0637\u0648\u0631\u0629: {res['severity']}\n"
             f"\u0627\u0644\u0633\u0628\u0628: {res['ai_reason']}\n"
             f"\u0627\u0644\u0645\u0642\u062a\u0631\u062d: {res['suggested_correction']}")
+
+
+async def _enrich_client_info(conv_id):
+    """Populate conversation custom attributes (client_ip/city/country) from Chatwoot data.
+    Idempotent: skips if client_ip already set. Reads only; writes NEW conversation attributes
+    (does NOT modify the customer's original contact record). Missing values -> 'غير متوفر'."""
+    if not conv_id:
+        return
+    headers = {"api_access_token": BOT_TOKEN, "X-Forwarded-Proto": "https"}
+    try:
+        async with httpx.AsyncClient(timeout=10) as cl:
+            rc = await cl.get(f"{CHATWOOT_BASE}/api/v1/accounts/{CHATWOOT_ACCOUNT}/conversations/{conv_id}", headers=headers)
+            if rc.status_code != 200:
+                return
+            cdata = rc.json()
+            # already enriched? skip to avoid redundant writes
+            ca = cdata.get("custom_attributes") or {}
+            if ca.get("client_ip"):
+                return
+            contact = (cdata.get("meta") or {}).get("sender") or {}
+            contact_id = contact.get("id")
+            conv_addl = cdata.get("additional_attributes") or {}
+            # IP can be on the conversation or the contact record
+            ip = conv_addl.get("created_at_ip")
+            city = None
+            country = None
+            if contact_id:
+                rci = await cl.get(f"{CHATWOOT_BASE}/api/v1/accounts/{CHATWOOT_ACCOUNT}/contacts/{contact_id}", headers=headers)
+                if rci.status_code == 200:
+                    aa = (rci.json().get("payload") or {}).get("additional_attributes") or {}
+                    ip = ip or aa.get("created_at_ip")
+                    city = aa.get("city")
+                    country = aa.get("country") or aa.get("country_code")
+            NA = "\u063a\u064a\u0631 \u0645\u062a\u0648\u0641\u0631"  # غير متوفر
+            payload = {"custom_attributes": {
+                "client_ip": ip or NA,
+                "client_city": city or NA,
+                "client_country": country or NA,
+            }}
+            await cl.post(f"{CHATWOOT_BASE}/api/v1/accounts/{CHATWOOT_ACCOUNT}/conversations/{conv_id}/custom_attributes",
+                          headers={**headers, "Content-Type": "application/json"}, json=payload)
+    except Exception:
+        return
 
 
 async def _greeting_should_check(conv_id, message_id):
