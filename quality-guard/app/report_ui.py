@@ -233,10 +233,17 @@ _PAGE = r"""<!doctype html>
       <select id="alert_type">
         <option value="">الكل</option>
         <option value="abuse">إساءة/أسلوب</option>
+        <option value="unprofessional_reply">رد غير مهني</option>
         <option value="unprofessional_note">نوت غير مهني</option>
         <option value="internal_argument">جدال داخلي</option>
-        <option value="reply_without_assignment">رد بدون إسناد</option>
-        <option value="response_delay">تأخر بالرد</option>
+        <option value="policy_risk">مخاطرة سياسة</option>
+        <option value="sales_risk">مخاطرة سعرية</option>
+        <option value="delay_handling_risk">تعامل مع التأخير</option>
+        <option value="missing_greeting">نقص ترحيب</option>
+        <option value="missing_closing_check">نقص ختام</option>
+        <option value="missing_rating_close">نقص تقييم</option>
+        <option value="first_response_delay">تأخر الرد الأولي</option>
+        <option value="official_policy_mismatch">مخالفة سياسة رسمية</option>
       </select></label>
     <label>الخطورة
       <select id="severity">
@@ -376,6 +383,10 @@ _PAGE = r"""<!doctype html>
 const SEV = {high:'عالية',medium:'متوسطة',low:'منخفضة'};
 const TYPE = {abuse:'إساءة/أسلوب',unprofessional_reply:'رد غير مهني',unprofessional_note:'نوت غير مهني',internal_argument:'جدال داخلي',policy_risk:'مخاطرة سياسة',sales_risk:'مخاطرة سعرية',delay_handling_risk:'تعامل مع التأخير',missing_greeting:'نقص ترحيب',missing_closing_check:'نقص ختام',missing_rating_close:'نقص تقييم',first_response_delay:'تأخر الرد الأولي',official_policy_mismatch:'مخالفة سياسة رسمية',reply_without_assignment:'رد بدون إسناد',response_delay:'تأخر بالرد'};
 const DIR = {to_customer:'للعميل',internal_note:'نوت داخلي'};
+const CHAN = {'Channel::WebWidget':'دردشة الموقع','Channel::Api':'واتساب/API','Channel::Whatsapp':'واتساب','Channel::Email':'بريد إلكتروني','Channel::TwitterProfile':'تويتر','Channel::FacebookPage':'فيسبوك','Channel::Telegram':'تيليجرام','Channel::Sms':'رسائل SMS','Channel::Line':'لاين'};
+const SUPSTAT = {pending:'قيد المراجعة',reviewed:'تمت المراجعة',acknowledged:'تم الاطلاع',dismissed:'مُستبعد',resolved:'مُعالَج'};
+function chanAr(c){ return CHAN[c] || (c||'—'); }
+function supAr(s){ return SUPSTAT[s] || (s||'قيد المراجعة'); }
 function qs(){
   const p=new URLSearchParams();
   const f=id=>document.getElementById(id).value;
@@ -414,7 +425,7 @@ async function load(){
       <td class="muted">${dt}</td>
       <td>${a.employee_name||'—'}<br><span class="muted">${a.employee_email||''}</span></td>
       <td>#${a.conversation_id}</td>
-      <td>${a.channel_type||'—'}</td>
+      <td>${chanAr(a.channel_type)}</td>
       <td>${TYPE[a.alert_type]||a.alert_type}</td>
       <td>${sev}</td>
       <td>${DIR[a.message_direction]||a.message_direction||''}</td>
@@ -422,7 +433,7 @@ async function load(){
       <td class="snip muted">${(a.ai_reason||'').replace(/</g,'&lt;')}</td>
       <td class="snip muted">${(a.suggested_correction||'').replace(/</g,'&lt;')}</td>
       <td>${rep}</td>
-      <td>${a.supervisor_status||'pending'}</td>
+      <td>${supAr(a.supervisor_status)}</td>
     </tr>`;
   }).join('');
 }
@@ -537,6 +548,30 @@ function setActor(){ var e=document.getElementById('admin-actor'); if(e) e.textC
 // ---------- RULES ----------
 var SEV_AR = {high:'عالية',medium:'متوسطة',low:'منخفضة'};
 var SCOPE_AR = {external:'رد خارجي',note:'نوت داخلي'};
+// خرائط ترجمة العرض (المفاتيح الداخلية تبقى كما هي — هذه للعرض فقط)
+var POLCAT_AR = {
+  shipping_policy:'سياسة الشحن', delivery_time_policy:'سياسة مدة التوصيل',
+  cancellation_policy:'سياسة الإلغاء', return_policy:'سياسة الإرجاع',
+  refund_policy:'سياسة الاسترداد', warranty_policy:'سياسة الضمان',
+  installation_policy:'سياسة التركيب', payment_policy:'سياسة الدفع',
+  pricing_policy:'سياسة الأسعار', offers_policy:'سياسة العروض'
+};
+var SETTING_AR = {
+  sla_minutes:'مدة الرد الأولي (دقائق)', work_start_hour:'بداية الدوام (الساعة)',
+  work_end_hour:'نهاية الدوام (الساعة)', excluded_bot_user_ids:'حسابات مستبعدة (معرّفات البوتات)',
+  excluded_sender_types:'أنواع مرسلين مستبعدة', admin_pass_hash:'بصمة كلمة مرور الإدارة'
+};
+var ACTION_AR = {
+  create_rule:'إضافة قاعدة', update_rule:'تعديل قاعدة', delete_rule:'حذف قاعدة',
+  create_policy:'إضافة سياسة', update_policy:'تعديل سياسة', toggle_policy:'تشغيل/إيقاف سياسة',
+  delete_policy:'حذف سياسة', update_setting:'تعديل إعداد'
+};
+var ENTITY_AR = { rules:'القواعد', policies:'السياسات', settings:'الإعدادات' };
+function polcatAr(c){ return POLCAT_AR[c] || c; }
+function settingAr(k){ return SETTING_AR[k] || k; }
+function actionAr(a){ return ACTION_AR[a] || a; }
+function entityAr(e){ return ENTITY_AR[e] || e; }
+function typeAr(t){ return (typeof TYPE!=='undefined' && TYPE[t]) ? TYPE[t] : t; }
 var CHAT_TYPES = ['missing_greeting','missing_closing_check','missing_rating_close'];
 
 async function loadRules(){
@@ -568,7 +603,7 @@ function ruleCard(x){
       '<div class="ph">'+esc(x.phrase)+'</div>'+
       '<div class="meta"><span class="chip scope">'+(SCOPE_AR[x.scope]||x.scope)+'</span>'+
         '<span class="chip '+x.severity+'">'+(SEV_AR[x.severity]||x.severity)+'</span>'+
-        '<span>'+esc(x.alert_type)+'</span></div>'+
+        '<span>'+esc(typeAr(x.alert_type))+'</span></div>'+
       (x.suggested_correction?'<div class="sub">💡 '+esc(x.suggested_correction)+'</div>':'')+
     '</div>'+
     '<div class="acts">'+
@@ -623,7 +658,7 @@ function ruleFormHtml(x){
   return ''+
     '<label>العبارة<input type="text" id="m_phrase" value="'+esc(x.phrase||'')+'"></label>'+
     '<label>النطاق<select id="m_scope">'+opts(['external','note'],['رد خارجي','نوت داخلي'],x.scope)+'</select></label>'+
-    '<label>نوع التنبيه<input type="text" id="m_type" value="'+esc(x.alert_type||'')+'" placeholder="abuse / unprofessional_note / missing_greeting…"></label>'+
+    '<label>نوع التنبيه (المعرّف الداخلي)<input type="text" id="m_type" value="'+esc(x.alert_type||'')+'" placeholder="مثال: abuse، unprofessional_note، missing_greeting"></label>'+
     '<label>الخطورة<select id="m_sev">'+opts(['high','medium','low'],['عالية','متوسطة','منخفضة'],x.severity)+'</select></label>'+
     '<label>السبب (يظهر في التنبيه)<textarea id="m_reason" rows="2">'+esc(x.ai_reason||'')+'</textarea></label>'+
     '<label>المقترح البديل<textarea id="m_sugg" rows="2">'+esc(x.suggested_correction||'')+'</textarea></label>';
@@ -642,7 +677,7 @@ function renderPolicies(){
   var el=document.getElementById('policieslist');
   el.innerHTML = list.length? list.map(function(p){
     return '<div class="qcard'+(p.is_active?'':' off')+'">'+
-      '<div class="main"><div class="ph">'+esc(p.policy_category)+(p.numbers_or_limits?' · أرقام: '+esc(p.numbers_or_limits):'')+'</div>'+
+      '<div class="main"><div class="ph">'+esc(polcatAr(p.policy_category))+(p.numbers_or_limits?' · أرقام: '+esc(p.numbers_or_limits):'')+'</div>'+
       '<div class="sub">'+esc((p.official_statement||'').slice(0,140))+'</div>'+
       (p.source_url?'<div class="meta"><span>🔗 '+esc(p.source_url.slice(0,60))+'</span></div>':'')+'</div>'+
       '<div class="acts">'+switchHtml(p.is_active,"togglePolicy("+p.id+")")+
@@ -665,7 +700,7 @@ function editPolicy(id){
 }
 function policyFormHtml(p){
   p=p||{};
-  var opts2=POLCATS.map(function(c){return '<option '+(p.policy_category===c?'selected':'')+'>'+c+'</option>';}).join('');
+  var opts2=POLCATS.map(function(c){return '<option value="'+c+'" '+(p.policy_category===c?'selected':'')+'>'+polcatAr(c)+'</option>';}).join('');
   return ''+
     '<label>الفئة<select id="m_cat">'+opts2+'</select></label>'+
     '<label>النص الرسمي الصحيح<textarea id="m_stmt" rows="3">'+esc(p.official_statement||'')+'</textarea></label>'+
@@ -691,7 +726,7 @@ async function saveSla(){
     var key=SLA_KEYS[i][0]; var v=val('sla_'+key);
     await fetch('admin/settings/'+key,{method:'PUT',headers:H(),body:JSON.stringify({value:v,_actor:ACTOR})});
   }
-  alert('تم حفظ إعدادات SLA'); loadSla();
+  alert('تم حفظ إعدادات زمن الرد'); loadSla();
 }
 
 // ---------- CONFIG ----------
@@ -700,7 +735,7 @@ async function loadConfig(){
   var sett=(await r.json()).settings||[];
   var el=document.getElementById('configlist');
   el.innerHTML = sett.map(function(s){
-    return '<div class="qcard"><div class="main"><div class="ph">'+esc(s.key)+'</div></div>'+
+    return '<div class="qcard"><div class="main"><div class="ph">'+esc(settingAr(s.key))+'</div><div class="meta"><span class="muted" style="font-size:10.5px">'+esc(s.key)+'</span></div></div>'+
       '<div class="acts"><input type="text" id="cfg_'+s.key+'" value="'+esc(s.value||'')+'" style="padding:7px;border:1px solid var(--line);border-radius:7px">'+
       '<button class="iconbtn" onclick="saveCfg(\''+s.key+'\')">حفظ</button></div></div>';
   }).join('');
@@ -713,7 +748,7 @@ async function loadAudit(){
   AUDIT=(await r.json()).audit||[];
   var sel=document.getElementById('audit_action');
   var actions=Array.from(new Set(AUDIT.map(function(a){return a.action;})));
-  sel.innerHTML='<option value="">كل الإجراءات</option>'+actions.map(function(a){return '<option>'+a+'</option>';}).join('');
+  sel.innerHTML='<option value="">كل الإجراءات</option>'+actions.map(function(a){return '<option value="'+a+'">'+actionAr(a)+'</option>';}).join('');
   renderAudit();
 }
 function renderAudit(){
@@ -723,7 +758,7 @@ function renderAudit(){
   if(q) list=list.filter(function(a){return JSON.stringify(a).indexOf(q)>=0;});
   var el=document.getElementById('auditlist');
   el.innerHTML='<table><thead><tr><th>الوقت</th><th>المشرف</th><th>الإجراء</th><th>العنصر</th><th>قبل</th><th>بعد</th></tr></thead><tbody>'+
-    list.map(function(a){return '<tr><td class="muted">'+new Date(a.created_at).toLocaleString('ar-SA')+'</td><td>'+esc(a.actor||'')+'</td><td>'+esc(a.action)+'</td><td>'+esc(a.entity||'')+'#'+esc(a.entity_id||'')+'</td><td class="snip muted">'+esc((a.old_value||'').slice(0,40))+'</td><td class="snip">'+esc((a.new_value||'').slice(0,40))+'</td></tr>';}).join('')+
+    list.map(function(a){return '<tr><td class="muted">'+new Date(a.created_at).toLocaleString('ar-SA')+'</td><td>'+esc(a.actor||'')+'</td><td>'+esc(actionAr(a.action))+'</td><td>'+esc(entityAr(a.entity||''))+(a.entity_id?'#'+esc(a.entity_id):'')+'</td><td class="snip muted">'+esc((a.old_value||'').slice(0,40))+'</td><td class="snip">'+esc((a.new_value||'').slice(0,40))+'</td></tr>';}).join('')+
     '</tbody></table>';
 }
 
