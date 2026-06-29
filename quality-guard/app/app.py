@@ -202,6 +202,47 @@ def _fmt_note(res):
             f"\u0627\u0644\u0645\u0642\u062a\u0631\u062d: {res['suggested_correction']}")
 
 
+async def _geo_lookup(ip):
+    """Resolve city/country from an IP via ip-api.com, cached in qg_geoip_cache.
+    Returns (city, country) or (None, None) on any failure. Never raises."""
+    if not ip or ip in ("127.0.0.1", "::1"):
+        return (None, None)
+    p = await pool()
+    # 1) cache hit
+    try:
+        async with p.acquire() as c:
+            row = await c.fetchrow("SELECT city, country, resolved FROM qg_geoip_cache WHERE ip=$1", ip)
+        if row:
+            return (row["city"], row["country"]) if row["resolved"] else (None, None)
+    except Exception:
+        pass
+    # 2) live lookup
+    city = country = None
+    resolved = False
+    try:
+        async with httpx.AsyncClient(timeout=6) as cl:
+            r = await cl.get(f"http://ip-api.com/json/{ip}",
+                             params={"fields": "status,country,city"})
+        if r.status_code == 200:
+            d = r.json()
+            if d.get("status") == "success":
+                city = d.get("city") or None
+                country = d.get("country") or None
+                resolved = bool(city or country)
+    except Exception:
+        resolved = False
+    # 3) store in cache (even failures, to avoid hammering the API)
+    try:
+        async with p.acquire() as c:
+            await c.execute(
+                "INSERT INTO qg_geoip_cache (ip, city, country, resolved) VALUES ($1,$2,$3,$4) "
+                "ON CONFLICT (ip) DO UPDATE SET city=EXCLUDED.city, country=EXCLUDED.country, "
+                "resolved=EXCLUDED.resolved, fetched_at=now()", ip, city, country, resolved)
+    except Exception:
+        pass
+    return (city, country)
+
+
 async def _enrich_client_info(conv_id):
     """Populate conversation custom attributes (client_ip/city/country) from Chatwoot data.
     Idempotent: skips if client_ip already set. Reads only; writes NEW conversation attributes
@@ -233,6 +274,11 @@ async def _enrich_client_info(conv_id):
                     ip = ip or aa.get("created_at_ip")
                     city = aa.get("city")
                     country = aa.get("country") or aa.get("country_code")
+            # GeoIP enrichment: if city/country missing but we have an IP, resolve it
+            if ip and not (city and country):
+                geo_city, geo_country = await _geo_lookup(ip)
+                city = city or geo_city
+                country = country or geo_country
             NA = "\u063a\u064a\u0631 \u0645\u062a\u0648\u0641\u0631"  # غير متوفر
             payload = {"custom_attributes": {
                 "client_ip": ip or NA,

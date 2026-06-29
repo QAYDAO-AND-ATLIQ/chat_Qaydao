@@ -111,3 +111,12 @@ CREATE INDEX IF NOT EXISTS idx_qg_audit_created ON qg_audit_log (created_at);
 
 -- WhatsApp outreach: track customer engagement so greeting is evaluated only after the customer replies
 ALTER TABLE qg_seen_conversations ADD COLUMN IF NOT EXISTS customer_engaged BOOLEAN DEFAULT FALSE;
+
+-- GeoIP cache: city/country resolved from client IP (via ip-api.com), to avoid repeat lookups
+CREATE TABLE IF NOT EXISTS qg_geoip_cache (
+    ip          TEXT PRIMARY KEY,
+    city        TEXT,
+    country     TEXT,
+    resolved    BOOLEAN DEFAULT FALSE,
+    fetched_at  TIMESTAMPTZ DEFAULT now()
+);
