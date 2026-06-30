@@ -184,6 +184,12 @@ async def webhook(request: Request, secret: str = Query(default="")):
             if g:
                 fired.append(g)
 
+    # 3) assignment check — external reply by a human whose id != conversation assignee
+    if not is_priv:
+        asg = await _assignment_mismatch(conv_id, sender.get("id"))
+        if asg:
+            fired.append(asg)
+
     if not fired:
         return {"classified": "safe"}
 
@@ -209,6 +215,7 @@ ALERT_TYPE_AR = {
     "missing_rating_close": "\u0646\u0642\u0635 \u0637\u0644\u0628 \u062a\u0642\u064a\u064a\u0645",
     "first_response_delay": "\u062a\u0623\u062e\u0631 \u0627\u0644\u0631\u062f \u0627\u0644\u0623\u0648\u0644\u064a",
     "official_policy_mismatch": "\u0645\u062e\u0627\u0644\u0641\u0629 \u0633\u064a\u0627\u0633\u0629 \u0631\u0633\u0645\u064a\u0629",
+    "reply_without_assignment": "\u0631\u062f \u0645\u0646 \u0645\u0648\u0638\u0641 \u063a\u064a\u0631 \u0645\u0648\u0643\u0651\u0644",
 }
 SEVERITY_AR = {
     "high": "\u0639\u0627\u0644\u064a\u0629",
@@ -316,6 +323,36 @@ async def _enrich_client_info(conv_id):
                           headers={**headers, "Content-Type": "application/json"}, json=payload)
     except Exception:
         return
+
+
+async def _assignment_mismatch(conv_id, sender_id):
+    """Return an alert dict if the replying human is NOT the conversation assignee.
+    Authoritative: reads the conversation's assignee from Chatwoot. Bots/system already
+    excluded upstream. No assignee at all also counts as a mismatch."""
+    if not conv_id or not sender_id:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as cl:
+            r = await cl.get(f"{CHATWOOT_BASE}/api/v1/accounts/{CHATWOOT_ACCOUNT}/conversations/{conv_id}",
+                             headers={"api_access_token": BOT_TOKEN, "X-Forwarded-Proto": "https"})
+        if r.status_code != 200:
+            return None
+        meta = (r.json().get("meta") or {})
+        assignee = meta.get("assignee") or {}
+        assignee_id = assignee.get("id")
+    except Exception:
+        return None
+    # if the replier IS the assignee, all good
+    if assignee_id and assignee_id == sender_id:
+        return None
+    return {
+        "alert_type": "reply_without_assignment",
+        "severity": "medium",
+        "matched_rule": "assignment_check",
+        "ai_reason": "\u0631\u062f \u0627\u0644\u0645\u0648\u0638\u0641 \u0639\u0644\u0649 \u0645\u062d\u0627\u062f\u062b\u0629 \u063a\u064a\u0631 \u0645\u0648\u0643\u0651\u0644\u0629 \u0644\u0647 (assignee \u0645\u062e\u062a\u0644\u0641 \u0623\u0648 \u063a\u064a\u0631 \u0645\u062d\u062f\u0651\u062f).",
+        "suggested_correction": "\u0642\u0628\u0644 \u0627\u0644\u0631\u062f \u0639\u0644\u0649 \u0627\u0644\u0639\u0645\u064a\u0644\u060c \u064a\u0631\u062c\u0649 \u062a\u0648\u0643\u064a\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629 \u0644\u0643 \u0623\u0648 \u0637\u0644\u0628 \u062a\u062d\u0648\u064a\u0644\u0647\u0627 \u0645\u0646 \u0627\u0644\u0645\u0648\u0638\u0641 \u0627\u0644\u0645\u0633\u0624\u0648\u0644.",
+        "policy_reference": "Assignment / \u0627\u0644\u062a\u0648\u0643\u064a\u0644",
+    }
 
 
 async def _greeting_should_check(conv_id, message_id):
