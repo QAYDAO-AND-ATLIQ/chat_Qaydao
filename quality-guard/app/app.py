@@ -10,7 +10,7 @@ Hard guarantees:
 """
 import os, io, csv, datetime, json
 import asyncpg, httpx
-from fastapi import FastAPI, Request, Response, Query
+from fastapi import FastAPI, Request, Response, Query, Body
 from classifier import classify, classify_first_reply, classify_closing, snippet, is_opening_template
 import report_ui
 import sla
@@ -488,6 +488,23 @@ async def report(date_from: str = Query(default=None), date_to: str = Query(defa
     async with p.acquire() as c:
         rows = await c.fetch(q, *args)
     return {"count": len(rows), "alerts": [dict(r) for r in rows]}
+
+@app.put("/alert/{alert_id}/supervisor-status")
+async def update_supervisor_status(alert_id: int, payload: dict = Body(...)):
+    """Update supervisor review status. Only two valid values:
+    'not_reviewed' and 'reviewed'. Display labels are handled in the UI."""
+    new_status = (payload.get("status") or "").strip()
+    if new_status not in ("not_reviewed", "reviewed"):
+        return Response(content="invalid status", status_code=400)
+    actor = (payload.get("actor") or "").strip() or None
+    p = await pool()
+    async with p.acquire() as c:
+        await c.execute(
+            "UPDATE qg_alerts SET supervisor_status=$2, supervisor_note=$3 WHERE id=$1",
+            alert_id, new_status,
+            (("\u062d\u062f\u0651\u062b\u0647\u0627: " + actor) if actor else None))
+    return {"id": alert_id, "supervisor_status": new_status}
+
 
 @app.get("/report.csv")
 async def report_csv():

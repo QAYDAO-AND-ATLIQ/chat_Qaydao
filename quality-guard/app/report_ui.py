@@ -211,6 +211,11 @@ _PAGE = r"""<!doctype html>
   #modal-body input,#modal-body select,#modal-body textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit}
   .modal-foot{display:flex;gap:8px;justify-content:flex-start;padding:12px 16px;border-top:1px solid var(--line)}
   .empty2{padding:24px;text-align:center;color:var(--muted);font-size:13px}
+  .convlink{color:var(--brand);text-decoration:none;font-weight:600}
+  .convlink:hover{text-decoration:underline}
+  .supsel{padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;cursor:pointer;background:#fff}
+  .supsel.not_reviewed{border-color:#f0c36d;background:#fff8e8;color:#9a6700}
+  .supsel.reviewed{border-color:#a7d8b4;background:#eaf7ee;color:#1a7f37}
 </style>
 </head>
 <body>
@@ -384,9 +389,32 @@ const SEV = {high:'عالية',medium:'متوسطة',low:'منخفضة'};
 const TYPE = {abuse:'إساءة/أسلوب',unprofessional_reply:'رد غير مهني',unprofessional_note:'نوت غير مهني',internal_argument:'جدال داخلي',policy_risk:'مخاطرة سياسة',sales_risk:'مخاطرة سعرية',delay_handling_risk:'تعامل مع التأخير',missing_greeting:'نقص ترحيب',missing_closing_check:'نقص ختام',missing_rating_close:'نقص تقييم',first_response_delay:'تأخر الرد الأولي',official_policy_mismatch:'مخالفة سياسة رسمية',reply_without_assignment:'رد بدون إسناد',response_delay:'تأخر بالرد'};
 const DIR = {to_customer:'للعميل',internal_note:'نوت داخلي'};
 const CHAN = {'Channel::WebWidget':'دردشة الموقع','Channel::Api':'واتساب/API','Channel::Whatsapp':'واتساب','Channel::Email':'بريد إلكتروني','Channel::TwitterProfile':'تويتر','Channel::FacebookPage':'فيسبوك','Channel::Telegram':'تيليجرام','Channel::Sms':'رسائل SMS','Channel::Line':'لاين'};
-const SUPSTAT = {pending:'قيد المراجعة',reviewed:'تمت المراجعة',acknowledged:'تم الاطلاع',dismissed:'مُستبعد',resolved:'مُعالَج'};
+const SUPSTAT = {not_reviewed:'لم تتم المراجعة',reviewed:'تمت المراجعة والتنبيه'};
 function chanAr(c){ return CHAN[c] || (c||'—'); }
-function supAr(s){ return SUPSTAT[s] || (s||'قيد المراجعة'); }
+function supAr(s){ return SUPSTAT[s] || 'لم تتم المراجعة'; }
+function supSelect(a){
+  var cur = (a.supervisor_status==='reviewed') ? 'reviewed' : 'not_reviewed';
+  var o1 = '<option value="not_reviewed"' + (cur==='not_reviewed'?' selected':'') + '>لم تتم المراجعة</option>';
+  var o2 = '<option value="reviewed"' + (cur==='reviewed'?' selected':'') + '>تمت المراجعة والتنبيه</option>';
+  return '<select class="supsel ' + cur + '" onchange="setSupStatus(' + a.id + ', this)">' + o1 + o2 + '</select>';
+}
+// base URL for Chatwoot conversation links
+var CW_ORIGIN = 'https://chat.qaydao.com';
+function convLink(accountId, convId){
+  var acc = accountId || 1;
+  return CW_ORIGIN + '/app/accounts/' + acc + '/conversations/' + convId;
+}
+async function setSupStatus(alertId, sel){
+  var status = sel.value;
+  try {
+    await fetch('alert/' + alertId + '/supervisor-status', {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status: status, actor: (typeof ACTOR!=='undefined'? ACTOR : '')})
+    });
+    sel.classList.remove('not_reviewed','reviewed');
+    sel.classList.add(status);
+  } catch(e){ alert('تعذّر تحديث الحالة'); }
+}
 function qs(){
   const p=new URLSearchParams();
   const f=id=>document.getElementById(id).value;
@@ -424,7 +452,7 @@ async function load(){
     return `<tr>
       <td class="muted">${dt}</td>
       <td>${a.employee_name||'—'}<br><span class="muted">${a.employee_email||''}</span></td>
-      <td>#${a.conversation_id}</td>
+      <td><a href="${convLink(a.account_id, a.conversation_id)}" target="_blank" rel="noopener" class="convlink">#${a.conversation_id}</a></td>
       <td>${chanAr(a.channel_type)}</td>
       <td>${TYPE[a.alert_type]||a.alert_type}</td>
       <td>${sev}</td>
@@ -433,7 +461,7 @@ async function load(){
       <td class="snip muted">${(a.ai_reason||'').replace(/</g,'&lt;')}</td>
       <td class="snip muted">${(a.suggested_correction||'').replace(/</g,'&lt;')}</td>
       <td>${rep}</td>
-      <td>${supAr(a.supervisor_status)}</td>
+      <td>${supSelect(a)}</td>
     </tr>`;
   }).join('');
 }
