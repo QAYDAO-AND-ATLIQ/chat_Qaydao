@@ -66,6 +66,27 @@ async def classify_db(body: str, is_private: bool):
         return None
     return {k: best[k] for k in ("alert_type","severity","matched_rule","ai_reason","suggested_correction","policy_reference")}
 
+
+async def classify_db_customer(body: str):
+    """Match a CUSTOMER (incoming) message against DB rules with scope='customer'.
+    Returns an alert dict or None. Highest severity wins. Used for 'customer_abuse'."""
+    from classifier import normalize, _hit
+    t = normalize(body or "")
+    if not t:
+        return None
+    rules = await get_rules()
+    order = {"high": 0, "medium": 1, "low": 2}
+    best = None
+    for r in rules:
+        if r["scope"] != "customer":
+            continue
+        if r["phrase_norm"] and r["phrase_norm"] in t:
+            if best is None or order.get(r["severity"], 9) < order.get(best["severity"], 9):
+                best = r
+    if not best:
+        return None
+    return {k: best[k] for k in ("alert_type","severity","matched_rule","ai_reason","suggested_correction","policy_reference")}
+
 # ---------------- settings ----------------
 async def get_setting(key, default=None):
     p = await _pool()

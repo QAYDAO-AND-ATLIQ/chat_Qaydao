@@ -251,6 +251,7 @@ _PAGE = r"""<!doctype html>
         <option value="official_policy_mismatch">مخالفة سياسة رسمية</option>
         <option value="reply_without_assignment">رد من موظف غير موكّل</option>
         <option value="customer_abuse">إساءة من العميل</option>
+        <option value="excessive_internal_notes">كثرة الملاحظات الداخلية</option>
       </select></label>
     <label>الخطورة
       <select id="severity">
@@ -388,7 +389,7 @@ _PAGE = r"""<!doctype html>
 
 <script>
 const SEV = {high:'عالية',medium:'متوسطة',low:'منخفضة'};
-const TYPE = {abuse:'إساءة/أسلوب',unprofessional_reply:'رد غير مهني',unprofessional_note:'نوت غير مهني',internal_argument:'جدال داخلي',policy_risk:'مخاطرة سياسة',sales_risk:'مخاطرة سعرية',delay_handling_risk:'تعامل مع التأخير',missing_greeting:'نقص ترحيب',missing_closing_check:'نقص ختام',missing_rating_close:'نقص تقييم',first_response_delay:'تأخر الرد الأولي',official_policy_mismatch:'مخالفة سياسة رسمية',reply_without_assignment:'رد من موظف غير موكّل',customer_abuse:'إساءة من العميل',response_delay:'تأخر بالرد'};
+const TYPE = {abuse:'إساءة/أسلوب',unprofessional_reply:'رد غير مهني',unprofessional_note:'نوت غير مهني',internal_argument:'جدال داخلي',policy_risk:'مخاطرة سياسة',sales_risk:'مخاطرة سعرية',delay_handling_risk:'تعامل مع التأخير',missing_greeting:'نقص ترحيب',missing_closing_check:'نقص ختام',missing_rating_close:'نقص تقييم',first_response_delay:'تأخر الرد الأولي',official_policy_mismatch:'مخالفة سياسة رسمية',reply_without_assignment:'رد من موظف غير موكّل',customer_abuse:'إساءة من العميل',excessive_internal_notes:'كثرة الملاحظات الداخلية',response_delay:'تأخر بالرد'};
 const DIR = {to_customer:'للعميل',internal_note:'نوت داخلي',from_customer:'من العميل'};
 const CHAN = {'Channel::WebWidget':'دردشة الموقع','Channel::Api':'واتساب/API','Channel::Whatsapp':'واتساب','Channel::Email':'بريد إلكتروني','Channel::TwitterProfile':'تويتر','Channel::FacebookPage':'فيسبوك','Channel::Telegram':'تيليجرام','Channel::Sms':'رسائل SMS','Channel::Line':'لاين'};
 const SUPSTAT = {not_reviewed:'لم تتم المراجعة',reviewed:'تمت المراجعة والتنبيه'};
@@ -589,7 +590,7 @@ var POLCAT_AR = {
 var SETTING_AR = {
   sla_minutes:'مدة الرد الأولي (دقائق)', work_start_hour:'بداية الدوام (الساعة)',
   work_end_hour:'نهاية الدوام (الساعة)', excluded_bot_user_ids:'حسابات مستبعدة (معرّفات البوتات)',
-  excluded_sender_types:'أنواع مرسلين مستبعدة', admin_pass_hash:'بصمة كلمة مرور الإدارة'
+  excluded_sender_types:'أنواع مرسلين مستبعدة', max_internal_notes:'حد الملاحظات الداخلية في المحادثة', admin_pass_hash:'بصمة كلمة مرور الإدارة'
 };
 var ACTION_AR = {
   create_rule:'إضافة قاعدة', update_rule:'تعديل قاعدة', delete_rule:'حذف قاعدة',

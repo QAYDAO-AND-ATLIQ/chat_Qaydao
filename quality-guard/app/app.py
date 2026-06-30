@@ -129,7 +129,13 @@ async def webhook(request: Request, secret: str = Query(default="")):
             cid = conv.get("id") or msg.get("conversation_id")
             await _mark_customer_engaged(cid)
             # detect customer abuse/threats and post an internal support note for the agent
-            cab = classify_customer_abuse(msg.get("content", ""))
+            # prefer DB rules (scope='customer', editable from settings); fall back to code
+            try:
+                cab = await admin.classify_db_customer(msg.get("content", ""))
+            except Exception:
+                cab = None
+            if not cab:
+                cab = classify_customer_abuse(msg.get("content", ""))
             if cab:
                 rec = {
                     "account_id": conv.get("account_id") or CHATWOOT_ACCOUNT,
@@ -191,6 +197,12 @@ async def webhook(request: Request, secret: str = Query(default="")):
         if pol:
             fired.append(pol)
 
+    # excessive internal notes check (fires once per conversation when threshold exceeded)
+    if is_priv:
+        note_alert = await _excessive_notes_check(conv_id)
+        if note_alert:
+            fired.append(note_alert)
+
     # 2) greeting check — fire on the agent's FIRST reply that comes AFTER the customer has
     #    engaged. Uses an authoritative Chatwoot lookup (not a local flag) to avoid missed
     #    webhooks / races. The approved outreach opening template is never evaluated.
@@ -234,6 +246,7 @@ ALERT_TYPE_AR = {
     "official_policy_mismatch": "\u0645\u062e\u0627\u0644\u0641\u0629 \u0633\u064a\u0627\u0633\u0629 \u0631\u0633\u0645\u064a\u0629",
     "reply_without_assignment": "\u0631\u062f \u0645\u0646 \u0645\u0648\u0638\u0641 \u063a\u064a\u0631 \u0645\u0648\u0643\u0651\u0644",
     "customer_abuse": "\u0625\u0633\u0627\u0621\u0629 \u0645\u0646 \u0627\u0644\u0639\u0645\u064a\u0644",
+    "excessive_internal_notes": "\u0643\u062b\u0631\u0629 \u0627\u0644\u0645\u0644\u0627\u062d\u0638\u0627\u062a \u0627\u0644\u062f\u0627\u062e\u0644\u064a\u0629",
 }
 SEVERITY_AR = {
     "high": "\u0639\u0627\u0644\u064a\u0629",
@@ -424,6 +437,55 @@ async def _mark_closing_checked(conv_id):
         await c.execute(
             "INSERT INTO qg_seen_conversations (conversation_id, closing_checked) VALUES ($1, TRUE) "
             "ON CONFLICT (conversation_id) DO UPDATE SET closing_checked=TRUE", conv_id)
+
+
+async def _excessive_notes_check(conv_id):
+    """If internal (private) notes by humans in this conversation exceed the configured
+    threshold (default 5), fire ONE alert. Counts authoritatively via Chatwoot."""
+    if not conv_id:
+        return None
+    p = await pool()
+    async with p.acquire() as c:
+        already = await c.fetchval(
+            "SELECT notes_alerted FROM qg_seen_conversations WHERE conversation_id=$1", conv_id)
+    if already:
+        return None
+    try:
+        limit = int(await admin.get_setting("max_internal_notes", "5") or "5")
+    except Exception:
+        limit = 5
+    # count private notes authored by humans (exclude the QG bot id=14 and system id=2)
+    try:
+        async with httpx.AsyncClient(timeout=10) as cl:
+            r = await cl.get(f"{CHATWOOT_BASE}/api/v1/accounts/{CHATWOOT_ACCOUNT}/conversations/{conv_id}/messages",
+                             headers={"api_access_token": BOT_TOKEN, "X-Forwarded-Proto": "https"},
+                             params={"per_page": 100})
+        if r.status_code != 200:
+            return None
+        payload = r.json().get("payload", [])
+    except Exception:
+        return None
+    count = 0
+    for m in payload:
+        if m.get("private"):
+            sid = (m.get("sender") or {}).get("id")
+            if sid not in (14, 2):
+                count += 1
+    if count <= limit:
+        return None
+    # mark alerted so it fires only once
+    async with p.acquire() as c:
+        await c.execute(
+            "INSERT INTO qg_seen_conversations (conversation_id, notes_alerted) VALUES ($1, TRUE) "
+            "ON CONFLICT (conversation_id) DO UPDATE SET notes_alerted=TRUE", conv_id)
+    return {
+        "alert_type": "excessive_internal_notes",
+        "severity": "medium",
+        "matched_rule": "max_internal_notes",
+        "ai_reason": "\u0639\u062f\u062f \u0627\u0644\u0645\u0644\u0627\u062d\u0638\u0627\u062a \u0627\u0644\u062f\u0627\u062e\u0644\u064a\u0629 \u0641\u064a \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629 \u062a\u062c\u0627\u0648\u0632 \u0627\u0644\u062d\u062f \u0627\u0644\u0645\u0633\u0645\u0648\u062d (" + str(limit) + ").",
+        "suggested_correction": "\u064a\u062c\u0628 \u0627\u0644\u062a\u0631\u0643\u064a\u0632 \u0645\u0639 \u0645\u062d\u0627\u062f\u062b\u0629 \u0627\u0644\u0639\u0645\u064a\u0644 \u0628\u062f\u0644\u0627\u064b \u0645\u0646 \u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629 \u0625\u0644\u0649 \u062a\u0648\u0627\u0635\u0644 \u062f\u0627\u062e\u0644\u064a \u0628\u064a\u0646 \u0627\u0644\u0641\u0631\u064a\u0642\u061b \u0641\u064a \u0627\u0644\u062d\u0627\u0644\u0627\u062a \u0627\u0644\u0637\u0627\u0631\u0626\u0629 \u0627\u0633\u062a\u062e\u062f\u0645\u0648\u0627 \u0627\u0644\u0642\u0631\u0648\u0628 \u0623\u0648 \u0627\u0644\u0625\u064a\u0645\u064a\u0644.",
+        "policy_reference": "Internal Notes / \u0627\u0644\u0645\u0644\u0627\u062d\u0638\u0627\u062a \u0627\u0644\u062f\u0627\u062e\u0644\u064a\u0629",
+    }
 
 
 async def _record_first_reply(conv_id, message_id):

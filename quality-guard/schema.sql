@@ -125,3 +125,7 @@ CREATE TABLE IF NOT EXISTS qg_geoip_cache (
 -- (24h window may reopen/resolve repeatedly; never re-request intro/closing)
 ALTER TABLE qg_seen_conversations ADD COLUMN IF NOT EXISTS greeting_checked BOOLEAN DEFAULT FALSE;
 ALTER TABLE qg_seen_conversations ADD COLUMN IF NOT EXISTS closing_checked BOOLEAN DEFAULT FALSE;
+
+-- Point 2: excessive internal-notes alert — threshold setting + once-per-conversation flag
+ALTER TABLE qg_seen_conversations ADD COLUMN IF NOT EXISTS notes_alerted BOOLEAN DEFAULT FALSE;
+INSERT INTO qg_settings (key, value) VALUES ('max_internal_notes','5') ON CONFLICT (key) DO NOTHING;

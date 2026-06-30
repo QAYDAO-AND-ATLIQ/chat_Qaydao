@@ -51,7 +51,11 @@
       "#qg-frame-wrap{position:fixed;inset:0;z-index:50;display:none;background:#fff}" +
       "#qg-frame-wrap.show{display:block}" +
       "#qg-frame-wrap iframe{width:100%;height:100%;border:0}" +
-      "#qg-frame-close{position:absolute;inset-inline-end:14px;top:10px;z-index:51;background:#1f6feb;color:#fff;border:0;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit}";
+      "#qg-frame-close{position:absolute;inset-inline-end:14px;top:10px;z-index:51;background:#1f6feb;color:#fff;border:0;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit}" +
+      "body.qg-notes-hidden [data-qg-note-row]{display:none!important}" +
+      "#qg-toggle-notes{cursor:pointer;border:1px solid #d2d6dc;background:#fff;color:#1f2d3d;border-radius:8px;padding:5px 12px;font-family:inherit;font-size:13px;margin-inline-start:8px;white-space:nowrap}" +
+      "#qg-toggle-notes:hover{background:#f4f6f8}" +
+      "#qg-toggle-notes.on{background:#fff8e8;border-color:#f0c36d;color:#9a6700}";
     document.head.appendChild(st);
   }
 
@@ -75,6 +79,77 @@
     wrap.classList.add("show");
   }
 
+  // ---- Point 3: hide/show Quality Guard notes in the conversation view (no deletion) ----
+  var QG_NOTE_MARK = "\u062a\u0646\u0628\u064a\u0647 \u062c\u0648\u062f\u0629 \u062f\u0627\u062e\u0644\u064a"; // «تنبيه جودة داخلي»
+  var LBL_HIDE = "\u0625\u062e\u0641\u0627\u0621 \u062a\u0646\u0628\u064a\u0647\u0627\u062a \u0627\u0644\u062c\u0648\u062f\u0629"; // إخفاء تنبيهات الجودة
+  var LBL_SHOW = "\u0625\u0638\u0647\u0627\u0631 \u062a\u0646\u0628\u064a\u0647\u0627\u062a \u0627\u0644\u062c\u0648\u062f\u0629"; // إظهار تنبيهات الجودة
+
+  function tagQgNotes() {
+    // find message bubbles that contain the QG marker; tag the closest message row
+    var nodes = document.querySelectorAll("div,li,article,section");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.getAttribute && el.getAttribute("data-qg-note-row")) continue;
+      // shallow text check to avoid tagging huge containers
+      if (el.children.length <= 6 && (el.textContent || "").indexOf(QG_NOTE_MARK) > -1) {
+        // climb to the message-row wrapper (Chatwoot wraps each message)
+        var row = el;
+        for (var k = 0; k < 6 && row && row.parentElement; k++) {
+          var cls = (row.className || "") + "";
+          if (/message|conversation__message|wrap|bubble/i.test(cls)) break;
+          row = row.parentElement;
+        }
+        if (row) row.setAttribute("data-qg-note-row", "1");
+      }
+    }
+  }
+
+  function isConversationView() {
+    return /\/conversations?\//.test(location.pathname) || /\/(accounts)\/\d+\/(conversations|inbox)/.test(location.pathname);
+  }
+
+  function findTopBar() {
+    // locate the top tabs «الرسائل» / «إدارة المنتجات» and return their shared container
+    var cand = Array.prototype.slice.call(document.querySelectorAll("a,button,div,span"));
+    var tab = null;
+    for (var i = 0; i < cand.length; i++) {
+      var t = (cand[i].textContent || "").trim();
+      if (t === "\u0627\u0644\u0631\u0633\u0627\u0626\u0644" || t === "\u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a") {
+        tab = cand[i]; break;
+      }
+    }
+    if (!tab) return null;
+    // the tabs bar is usually the parent that holds both tabs
+    var p = tab.parentElement;
+    for (var j = 0; j < 4 && p; j++) {
+      if ((p.textContent || "").indexOf("\u0627\u0644\u0631\u0633\u0627\u0626\u0644") > -1) return p;
+      p = p.parentElement;
+    }
+    return tab.parentElement;
+  }
+
+  function injectToggle() {
+    if (!isConversationView()) return;
+    tagQgNotes();
+    if (document.getElementById("qg-toggle-notes")) return;
+    var bar = findTopBar();
+    if (!bar) return;
+    var btn = document.createElement("button");
+    btn.id = "qg-toggle-notes";
+    btn.type = "button";
+    var hidden = document.body.classList.contains("qg-notes-hidden");
+    btn.textContent = hidden ? LBL_SHOW : LBL_HIDE;
+    if (hidden) btn.classList.add("on");
+    btn.addEventListener("click", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var nowHidden = document.body.classList.toggle("qg-notes-hidden");
+      tagQgNotes();
+      btn.textContent = nowHidden ? LBL_SHOW : LBL_HIDE;
+      btn.classList.toggle("on", nowHidden);
+    });
+    bar.appendChild(btn);
+  }
+
   function inject() {
     if (!onReportsPage()) return;
     var found = findContainer();
@@ -87,7 +162,7 @@
     found.container.setAttribute(FLAG, "1");
   }
 
-  function tick() { try { inject(); } catch (e) {} }
+  function tick() { try { inject(); } catch (e) {} try { ensureStyles(); injectToggle(); } catch (e) {} }
   function start() {
     new MutationObserver(tick).observe(document.body, { childList: true, subtree: true });
     setInterval(tick, 1500);
