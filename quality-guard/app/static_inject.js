@@ -53,9 +53,8 @@
       "#qg-frame-wrap iframe{width:100%;height:100%;border:0}" +
       "#qg-frame-close{position:absolute;inset-inline-end:14px;top:10px;z-index:51;background:#1f6feb;color:#fff;border:0;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit}" +
       "body.qg-notes-hidden [data-qg-note-row]{display:none!important}" +
-      "#qg-toggle-notes{cursor:pointer;border:1px solid #d2d6dc;background:#fff;color:#1f2d3d;border-radius:8px;padding:5px 12px;font-family:inherit;font-size:13px;margin-inline-start:8px;white-space:nowrap}" +
-      "#qg-toggle-notes:hover{background:#f4f6f8}" +
-      "#qg-toggle-notes.on{background:#fff8e8;border-color:#f0c36d;color:#9a6700}";
+      "#qg-toggle-notes{cursor:pointer}" +
+      "#qg-toggle-notes.qg-toggle-on{color:#9a6700!important}";
     document.head.appendChild(st);
   }
 
@@ -108,46 +107,76 @@
     return /\/conversations?\//.test(location.pathname) || /\/(accounts)\/\d+\/(conversations|inbox)/.test(location.pathname);
   }
 
-  function findTopBar() {
-    // locate the top tabs «الرسائل» / «إدارة المنتجات» and return their shared container
-    var cand = Array.prototype.slice.call(document.querySelectorAll("a,button,div,span"));
-    var tab = null;
+  var LBL_MSGS = "\u0627\u0644\u0631\u0633\u0627\u0626\u0644";            // الرسائل
+  var LBL_PRODS = "\u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a"; // إدارة المنتجات
+
+  function _leafText(el) {
+    // text of an element treated as a tab label (small, few descendants)
+    if (!el) return "";
+    if (el.children && el.children.length > 4) return "";
+    return (el.textContent || "").trim();
+  }
+
+  function _findTab(label) {
+    var cand = document.querySelectorAll("a,button,div,span,li");
     for (var i = 0; i < cand.length; i++) {
-      var t = (cand[i].textContent || "").trim();
-      if (t === "\u0627\u0644\u0631\u0633\u0627\u0626\u0644" || t === "\u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a") {
-        tab = cand[i]; break;
+      if (_leafText(cand[i]) === label) return cand[i];
+    }
+    return null;
+  }
+
+  // Return the actual tab element + its parent bar, ONLY when both tabs are siblings
+  // (this guarantees we found the real conversation tab-bar, not a floating header).
+  function findTabBar() {
+    var prods = _findTab(LBL_PRODS);
+    var msgs = _findTab(LBL_MSGS);
+    if (!prods || !msgs) return null;
+    // climb from each to find a common ancestor that directly holds BOTH as descendants
+    // prefer the nearest shared parent
+    var pa = prods;
+    for (var d = 0; d < 5 && pa; d++) {
+      if (pa.contains(msgs) && pa !== msgs) {
+        // pa is a shared ancestor; use the level that holds both tab nodes
+        return { bar: pa, sampleTab: prods };
       }
+      pa = pa.parentElement;
     }
-    if (!tab) return null;
-    // the tabs bar is usually the parent that holds both tabs
-    var p = tab.parentElement;
-    for (var j = 0; j < 4 && p; j++) {
-      if ((p.textContent || "").indexOf("\u0627\u0644\u0631\u0633\u0627\u0626\u0644") > -1) return p;
-      p = p.parentElement;
-    }
-    return tab.parentElement;
+    return null;
   }
 
   function injectToggle() {
     if (!isConversationView()) return;
     tagQgNotes();
     if (document.getElementById("qg-toggle-notes")) return;
-    var bar = findTopBar();
-    if (!bar) return;
-    var btn = document.createElement("button");
+    var found = findTabBar();
+    if (!found || !found.bar) return;
+    // build the toggle as a clone of a real tab so it matches the tab design exactly
+    var sample = found.sampleTab;
+    var btn = sample.cloneNode(true);
     btn.id = "qg-toggle-notes";
-    btn.type = "button";
+    if (btn.tagName === "A") { btn.removeAttribute("href"); }
+    btn.setAttribute("role", "button");
+    btn.style.cursor = "pointer";
+    btn.classList.remove("router-link-active", "router-link-exact-active", "active", "is-active");
     var hidden = document.body.classList.contains("qg-notes-hidden");
-    btn.textContent = hidden ? LBL_SHOW : LBL_HIDE;
-    if (hidden) btn.classList.add("on");
+    // set the visible label text (replace inner text node, keep tab styling)
+    var lblNode = btn.querySelector("span span") || btn.querySelector("span") || btn;
+    lblNode.textContent = hidden ? LBL_SHOW : LBL_HIDE;
+    if (hidden) btn.classList.add("qg-toggle-on");
     btn.addEventListener("click", function (e) {
       e.preventDefault(); e.stopPropagation();
       var nowHidden = document.body.classList.toggle("qg-notes-hidden");
       tagQgNotes();
-      btn.textContent = nowHidden ? LBL_SHOW : LBL_HIDE;
-      btn.classList.toggle("on", nowHidden);
+      var ln = btn.querySelector("span span") || btn.querySelector("span") || btn;
+      ln.textContent = nowHidden ? LBL_SHOW : LBL_HIDE;
+      btn.classList.toggle("qg-toggle-on", nowHidden);
     });
-    bar.appendChild(btn);
+    // insert right after the «إدارة المنتجات» tab, inside the same bar
+    if (sample.parentElement) {
+      sample.parentElement.insertBefore(btn, sample.nextSibling);
+    } else {
+      found.bar.appendChild(btn);
+    }
   }
 
   function inject() {
