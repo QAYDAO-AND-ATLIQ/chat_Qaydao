@@ -118,13 +118,18 @@ async def webhook(request: Request, secret: str = Query(default="")):
     conv = (body.get("conversation") or {})
     sender = (msg.get("sender") or {})
     sender_type = (msg.get("sender_type") or sender.get("type") or "")
+    # Chatwoot's real webhook sends message_type as a string ("incoming"/"outgoing"/"template")
+    # and often sender_type=None for customer messages. Detect the customer side by message_type.
+    _mt = msg.get("message_type")
+    _is_incoming = (str(_mt).lower() == "incoming") or (_mt == 0)
+    _is_customer = _is_incoming or (str(sender_type).lower() == "contact")
     # ONLY human agents are monitored. Everything else (Contact, AgentBot, Captain::Assistant,
     # Captain, bots) is excluded from Quality Guard entirely.
     HUMAN_TYPES = ("user", "User")
     BOT_USER_IDS = {14, 2}  # 14=Quality Guard bot, 2=QAYDAO Admin (system-alerts account, not an agent)
     if sender_type not in HUMAN_TYPES:
-        # customer (Contact) message -> start first-response SLA timer; bots -> ignore completely
-        if str(sender_type).lower() in ("contact",) and not bool(msg.get("private")):
+        # customer (incoming) message -> SLA timer + customer-abuse check; bots -> ignore
+        if _is_customer and not bool(msg.get("private")):
             await sla.on_customer_message(pool, conv, msg)
             cid = conv.get("id") or msg.get("conversation_id")
             await _mark_customer_engaged(cid)
