@@ -120,3 +120,8 @@ CREATE TABLE IF NOT EXISTS qg_geoip_cache (
     resolved    BOOLEAN DEFAULT FALSE,
     fetched_at  TIMESTAMPTZ DEFAULT now()
 );
+
+-- WhatsApp: greeting & closing/rating fire at most ONCE per conversation
+-- (24h window may reopen/resolve repeatedly; never re-request intro/closing)
+ALTER TABLE qg_seen_conversations ADD COLUMN IF NOT EXISTS greeting_checked BOOLEAN DEFAULT FALSE;
+ALTER TABLE qg_seen_conversations ADD COLUMN IF NOT EXISTS closing_checked BOOLEAN DEFAULT FALSE;

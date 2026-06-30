@@ -336,6 +336,14 @@ async def _greeting_should_check(conv_id, message_id):
     return True
 
 
+async def _mark_closing_checked(conv_id):
+    p = await pool()
+    async with p.acquire() as c:
+        await c.execute(
+            "INSERT INTO qg_seen_conversations (conversation_id, closing_checked) VALUES ($1, TRUE) "
+            "ON CONFLICT (conversation_id) DO UPDATE SET closing_checked=TRUE", conv_id)
+
+
 async def _record_first_reply(conv_id, message_id):
     p = await pool()
     async with p.acquire() as c:
@@ -380,10 +388,18 @@ async def _is_first_agent_reply(conv_id, message_id):
 
 
 async def _handle_resolved(conv):
-    """On resolve, fetch the last agent message and run closing/rating check."""
+    """On resolve, fetch the last agent message and run closing/rating check.
+    Fires at most ONCE per conversation (WhatsApp 24h window may reopen/resolve repeatedly)."""
     conv_id = conv.get("id")
     if not conv_id:
         return {"skip": "no_conv"}
+    # once-per-conversation guard for closing/rating
+    p = await pool()
+    async with p.acquire() as c:
+        already = await c.fetchval(
+            "SELECT closing_checked FROM qg_seen_conversations WHERE conversation_id=$1", conv_id)
+    if already:
+        return {"skip": "closing_already_checked"}
     # fetch recent messages to find last agent external reply
     url = f"{CHATWOOT_BASE}/api/v1/accounts/{CHATWOOT_ACCOUNT}/conversations/{conv_id}/messages"
     try:
@@ -406,7 +422,9 @@ async def _handle_resolved(conv):
             last = m
             break
     if not last:
+        await _mark_closing_checked(conv_id)
         return {"skip": "no_agent_msg"}
+    await _mark_closing_checked(conv_id)
     res = classify_closing(last.get("content", ""))
     if not res:
         return {"classified": "safe"}
