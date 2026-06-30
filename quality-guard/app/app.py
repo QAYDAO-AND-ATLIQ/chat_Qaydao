@@ -195,9 +195,36 @@ async def webhook(request: Request, secret: str = Query(default="")):
     return {"alert_ids": alert_ids, "count": len(alert_ids), "posted": POST_ALERTS}
 
 
+# Arabic display labels for in-conversation notes (internal keys stay unchanged in code/DB)
+ALERT_TYPE_AR = {
+    "abuse": "\u0625\u0633\u0627\u0621\u0629/\u0623\u0633\u0644\u0648\u0628",
+    "unprofessional_reply": "\u0631\u062f \u063a\u064a\u0631 \u0645\u0647\u0646\u064a",
+    "unprofessional_note": "\u0646\u0648\u062a \u063a\u064a\u0631 \u0645\u0647\u0646\u064a",
+    "internal_argument": "\u062c\u062f\u0627\u0644 \u062f\u0627\u062e\u0644\u064a",
+    "policy_risk": "\u0645\u062e\u0627\u0637\u0631\u0629 \u0633\u064a\u0627\u0633\u0629",
+    "sales_risk": "\u0645\u062e\u0627\u0637\u0631\u0629 \u0633\u0639\u0631\u064a\u0629",
+    "delay_handling_risk": "\u062a\u0639\u0627\u0645\u0644 \u0645\u0639 \u0627\u0644\u062a\u0623\u062e\u064a\u0631",
+    "missing_greeting": "\u0646\u0642\u0635 \u062a\u0631\u062d\u064a\u0628",
+    "missing_closing_check": "\u0646\u0642\u0635 \u062e\u062a\u0627\u0645",
+    "missing_rating_close": "\u0646\u0642\u0635 \u0637\u0644\u0628 \u062a\u0642\u064a\u064a\u0645",
+    "first_response_delay": "\u062a\u0623\u062e\u0631 \u0627\u0644\u0631\u062f \u0627\u0644\u0623\u0648\u0644\u064a",
+    "official_policy_mismatch": "\u0645\u062e\u0627\u0644\u0641\u0629 \u0633\u064a\u0627\u0633\u0629 \u0631\u0633\u0645\u064a\u0629",
+}
+SEVERITY_AR = {
+    "high": "\u0639\u0627\u0644\u064a\u0629",
+    "medium": "\u0645\u062a\u0648\u0633\u0637\u0629",
+    "low": "\u0645\u0646\u062e\u0641\u0636\u0629",
+}
+
+def _ar_type(t):
+    return ALERT_TYPE_AR.get(t, t)
+
+def _ar_sev(sv):
+    return SEVERITY_AR.get(sv, sv)
+
 def _fmt_note(res):
     return (f"\U0001f6e1\ufe0f \u062a\u0646\u0628\u064a\u0647 \u062c\u0648\u062f\u0629 \u062f\u0627\u062e\u0644\u064a (Quality Guard)\n"
-            f"\u0627\u0644\u0646\u0648\u0639: {res['alert_type']} | \u0627\u0644\u062e\u0637\u0648\u0631\u0629: {res['severity']}\n"
+            f"\u0627\u0644\u0646\u0648\u0639: {_ar_type(res['alert_type'])} | \u0627\u0644\u062e\u0637\u0648\u0631\u0629: {_ar_sev(res['severity'])}\n"
             f"\u0627\u0644\u0633\u0628\u0628: {res['ai_reason']}\n"
             f"\u0627\u0644\u0645\u0642\u062a\u0631\u062d: {res['suggested_correction']}")
 
