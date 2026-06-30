@@ -11,7 +11,7 @@ Hard guarantees:
 import os, io, csv, datetime, json
 import asyncpg, httpx
 from fastapi import FastAPI, Request, Response, Query, Body
-from classifier import classify, classify_first_reply, classify_closing, snippet, is_opening_template
+from classifier import classify, classify_first_reply, classify_closing, snippet, is_opening_template, classify_customer_abuse
 import report_ui
 import sla
 import asyncio
@@ -126,7 +126,24 @@ async def webhook(request: Request, secret: str = Query(default="")):
         # customer (Contact) message -> start first-response SLA timer; bots -> ignore completely
         if str(sender_type).lower() in ("contact",) and not bool(msg.get("private")):
             await sla.on_customer_message(pool, conv, msg)
-            await _mark_customer_engaged(conv.get("id") or msg.get("conversation_id"))
+            cid = conv.get("id") or msg.get("conversation_id")
+            await _mark_customer_engaged(cid)
+            # detect customer abuse/threats and post an internal support note for the agent
+            cab = classify_customer_abuse(msg.get("content", ""))
+            if cab:
+                rec = {
+                    "account_id": conv.get("account_id") or CHATWOOT_ACCOUNT,
+                    "conversation_id": cid, "message_id": msg.get("id"),
+                    "inbox_id": conv.get("inbox_id"),
+                    "user_id": None, "employee_name": None, "employee_email": None,
+                    "channel_type": (conv.get("channel") or ""),
+                    "message_type": str(msg.get("message_type")),
+                    "message_direction": "from_customer", "is_private": True,
+                    "message_snippet": snippet(msg.get("content", "")), **cab,
+                }
+                aid = await _store_alert(rec)
+                await _post_private_note(cid, _fmt_note(cab))
+                return {"alert_id": aid, "type": "customer_abuse", "posted": POST_ALERTS}
         return {"skip": "not_human:" + str(sender_type)}
     # extra guard: exclude known bot user ids and any AI-assistant identities by name/email
     _sid = sender.get("id")
@@ -216,6 +233,7 @@ ALERT_TYPE_AR = {
     "first_response_delay": "\u062a\u0623\u062e\u0631 \u0627\u0644\u0631\u062f \u0627\u0644\u0623\u0648\u0644\u064a",
     "official_policy_mismatch": "\u0645\u062e\u0627\u0644\u0641\u0629 \u0633\u064a\u0627\u0633\u0629 \u0631\u0633\u0645\u064a\u0629",
     "reply_without_assignment": "\u0631\u062f \u0645\u0646 \u0645\u0648\u0638\u0641 \u063a\u064a\u0631 \u0645\u0648\u0643\u0651\u0644",
+    "customer_abuse": "\u0625\u0633\u0627\u0621\u0629 \u0645\u0646 \u0627\u0644\u0639\u0645\u064a\u0644",
 }
 SEVERITY_AR = {
     "high": "\u0639\u0627\u0644\u064a\u0629",

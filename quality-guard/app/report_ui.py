@@ -250,6 +250,7 @@ _PAGE = r"""<!doctype html>
         <option value="first_response_delay">تأخر الرد الأولي</option>
         <option value="official_policy_mismatch">مخالفة سياسة رسمية</option>
         <option value="reply_without_assignment">رد من موظف غير موكّل</option>
+        <option value="customer_abuse">إساءة من العميل</option>
       </select></label>
     <label>الخطورة
       <select id="severity">
@@ -387,8 +388,8 @@ _PAGE = r"""<!doctype html>
 
 <script>
 const SEV = {high:'عالية',medium:'متوسطة',low:'منخفضة'};
-const TYPE = {abuse:'إساءة/أسلوب',unprofessional_reply:'رد غير مهني',unprofessional_note:'نوت غير مهني',internal_argument:'جدال داخلي',policy_risk:'مخاطرة سياسة',sales_risk:'مخاطرة سعرية',delay_handling_risk:'تعامل مع التأخير',missing_greeting:'نقص ترحيب',missing_closing_check:'نقص ختام',missing_rating_close:'نقص تقييم',first_response_delay:'تأخر الرد الأولي',official_policy_mismatch:'مخالفة سياسة رسمية',reply_without_assignment:'رد من موظف غير موكّل',response_delay:'تأخر بالرد'};
-const DIR = {to_customer:'للعميل',internal_note:'نوت داخلي'};
+const TYPE = {abuse:'إساءة/أسلوب',unprofessional_reply:'رد غير مهني',unprofessional_note:'نوت غير مهني',internal_argument:'جدال داخلي',policy_risk:'مخاطرة سياسة',sales_risk:'مخاطرة سعرية',delay_handling_risk:'تعامل مع التأخير',missing_greeting:'نقص ترحيب',missing_closing_check:'نقص ختام',missing_rating_close:'نقص تقييم',first_response_delay:'تأخر الرد الأولي',official_policy_mismatch:'مخالفة سياسة رسمية',reply_without_assignment:'رد من موظف غير موكّل',customer_abuse:'إساءة من العميل',response_delay:'تأخر بالرد'};
+const DIR = {to_customer:'للعميل',internal_note:'نوت داخلي',from_customer:'من العميل'};
 const CHAN = {'Channel::WebWidget':'دردشة الموقع','Channel::Api':'واتساب/API','Channel::Whatsapp':'واتساب','Channel::Email':'بريد إلكتروني','Channel::TwitterProfile':'تويتر','Channel::FacebookPage':'فيسبوك','Channel::Telegram':'تيليجرام','Channel::Sms':'رسائل SMS','Channel::Line':'لاين'};
 const SUPSTAT = {not_reviewed:'لم تتم المراجعة',reviewed:'تمت المراجعة والتنبيه'};
 function chanAr(c){ return CHAN[c] || (c||'—'); }

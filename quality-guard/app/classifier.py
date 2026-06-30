@@ -259,6 +259,51 @@ def classify_first_reply(body: str):
                "Section 6")
 
 
+# ===== Customer abuse / threats toward the company (incoming customer messages) =====
+# Insults / accusations from the customer
+CUSTOMER_ABUSE = _norm_list([
+    "نصابين","نصاب","محتالين","محتال","حراميه","حرامي","لصوص","سراق","سرقتوني","نصبتو علي","نصب",
+    "كذابين","كذاب","كذابه","تكذبون","دجالين","دجال","مزورين","تزوير",
+    "زباله","قذرين","قذر","حقيرين","حقير","اوساخ","وسخين","كلاب","حمير","اغبياء","غبي","غبيه",
+    "تافهين","تافه","فاشلين","فاشل","نذاله","اولاد","قليلين ادب","قليل ادب","عديمين","بلا اخلاق",
+    "خونه","خاين","مخادعين","مخادع","لا تستحون","ما تستحون","عار عليكم","يا حقراء",
+])
+# Threats (legal / defamation / harm)
+CUSTOMER_THREAT = _norm_list([
+    "بشهر فيكم","راح اشهر","بفضحكم","راح افضحكم","بفضحكم بالسوشال","بنشر تجربتي","بنشركم",
+    "برفع عليكم","راح ارفع عليكم","بشتكي عليكم","راح اشتكي","بلغ عنكم","رايح للمحكمه","بوديكم المحكمه",
+    "بوديكم المحاكم","قضيه","دعوى","محامي","بحرككم","بكلم محامي","هيئه حمايه المستهلك","بلغ التجاره",
+    "بدمر سمعتكم","بخرب سمعتكم","راح اجيكم","بجيكم للمكتب","تنتظرون مني","ما راح اسكت","بعلمكم",
+    "تهديد","بكسر","براجعكم بطريقتي","تعرفون مين انا",
+])
+
+def classify_customer_abuse(body: str):
+    """Detect abuse/insults or threats coming FROM the customer. Returns alert dict or None.
+    This produces an INTERNAL note to support the agent (calm, official reply, escalate)."""
+    t = normalize(body or "")
+    if not t:
+        return None
+    is_threat = bool(_hit(t, CUSTOMER_THREAT))
+    is_abuse = bool(_hit(t, CUSTOMER_ABUSE))
+    if not (is_threat or is_abuse):
+        return None
+    # threats are higher severity
+    severity = "high" if is_threat else "medium"
+    reason = ("\u0627\u0644\u0639\u0645\u064a\u0644 \u0648\u062c\u0651\u0647 \u062a\u0647\u062f\u064a\u062f\u0627\u064b (\u062a\u0634\u0647\u064a\u0631/\u0634\u0643\u0648\u0649/\u0642\u0627\u0646\u0648\u0646\u064a)." if is_threat
+              else "\u0627\u0644\u0639\u0645\u064a\u0644 \u0627\u0633\u062a\u062e\u062f\u0645 \u0623\u0644\u0641\u0627\u0638\u0627\u064b \u0645\u0633\u064a\u0626\u0629 \u062a\u062c\u0627\u0647 \u0627\u0644\u0634\u0631\u0643\u0629.")
+    # ready-made official reply + reminder for the agent
+    suggestion = ("\u0631\u062f \u0631\u0633\u0645\u064a \u0645\u0642\u062a\u0631\u062d: \u00ab\u0646\u0639\u062a\u0630\u0631 \u0639\u0645\u0651\u0627 \u0628\u062f\u0631 \u0645\u0646 \u0627\u0646\u0632\u0639\u0627\u062c\u060c \u0648\u0646\u0624\u0643\u062f \u062d\u0631\u0635\u0646\u0627 \u0639\u0644\u0649 \u062e\u062f\u0645\u062a\u0643. \u0633\u0646\u0631\u0627\u062c\u0639 \u0637\u0644\u0628\u0643 \u0628\u0639\u0646\u0627\u064a\u0629 \u0648\u0646\u0639\u0648\u062f \u0644\u0643 \u0628\u0627\u0644\u062d\u0644 \u0627\u0644\u0645\u0646\u0627\u0633\u0628 \u0641\u064a \u0623\u0633\u0631\u0639 \u0648\u0642\u062a.\u00bb | "
+                  "\u062a\u0630\u0643\u064a\u0631: \u0644\u0627 \u062a\u062c\u0627\u062f\u0644 \u0627\u0644\u0639\u0645\u064a\u0644\u060c \u0627\u0644\u062a\u0632\u0645 \u0627\u0644\u0647\u062f\u0648\u0621 \u0648\u0627\u0644\u0627\u062d\u062a\u0631\u0627\u0641\u060c \u0648\u0627\u0631\u0641\u0639 \u0627\u0644\u062d\u0627\u0644\u0629 \u0644\u0644\u0645\u0634\u0631\u0641 \u0639\u0646\u062f \u0627\u0644\u062d\u0627\u062c\u0629.")
+    return {
+        "alert_type": "customer_abuse",
+        "severity": severity,
+        "matched_rule": "customer_threat" if is_threat else "customer_abuse",
+        "ai_reason": reason,
+        "suggested_correction": suggestion,
+        "policy_reference": "Customer Conduct / \u0633\u0644\u0648\u0643 \u0627\u0644\u0639\u0645\u064a\u0644",
+    }
+
+
 def classify_closing(body: str):
     """sections 7+8: final message before close should have closing-check and rating."""
     t = normalize(body or "")
