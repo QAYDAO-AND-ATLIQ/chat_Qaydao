@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS return_requests (
     bank_account      TEXT,
     iban              TEXT,
     attachment_name   TEXT,
+    attachment_path   TEXT,
+    attachment_mime   TEXT,
     assignee          TEXT,
     status            TEXT NOT NULL DEFAULT 'new'
                       CHECK (status IN ('new','will','doing','done')),

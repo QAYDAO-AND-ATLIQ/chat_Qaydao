@@ -15,12 +15,24 @@ by nginx basic-auth in front of this service. This service trusts the reverse pr
 """
 import os
 import json
+import uuid
 import asyncpg
+from pathlib import Path
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, HTMLResponse, Response
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi.responses import JSONResponse, HTMLResponse, Response, FileResponse
 from pydantic import BaseModel
 from typing import Optional
+
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/data/uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+ALLOWED_MIME = {
+    "application/pdf": ".pdf",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 app = FastAPI(title="QAYDAO Returns Service")
@@ -212,6 +224,63 @@ async def accountant_page():
     return HTMLResponse(ACCOUNTANT_HTML)
 
 
+@app.post("/returns/api/requests/{rid}/attachment")
+async def upload_attachment(rid: int, file: UploadFile = File(...)):
+    mime = (file.content_type or "").split(";")[0].strip().lower()
+    if mime not in ALLOWED_MIME:
+        raise HTTPException(400, "نوع ملف غير مسموح. المسموح: PDF, JPG, PNG, WEBP")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(400, "حجم الملف يتجاوز 10 ميجابايت")
+    if not data:
+        raise HTTPException(400, "الملف فارغ")
+
+    p = await pool()
+    async with p.acquire() as c:
+        exists = await c.fetchrow("SELECT attachment_path FROM return_requests WHERE id=$1", rid)
+        if not exists:
+            raise HTTPException(404, "not found")
+        # remove previous file if present
+        old = exists["attachment_path"]
+        if old:
+            try:
+                Path(old).unlink(missing_ok=True)
+            except Exception:
+                pass
+        ext = ALLOWED_MIME[mime]
+        fname = f"{rid}_{uuid.uuid4().hex}{ext}"
+        fpath = UPLOAD_DIR / fname
+        fpath.write_bytes(data)
+        orig = os.path.basename(file.filename or f"attachment{ext}")
+        r = await c.fetchrow(
+            """UPDATE return_requests
+                 SET attachment_name=$2, attachment_path=$3, attachment_mime=$4
+               WHERE id=$1 RETURNING *""",
+            rid, orig, str(fpath), mime,
+        )
+    return row_to_dict(r)
+
+
+@app.get("/returns/api/requests/{rid}/attachment")
+async def download_attachment(rid: int):
+    p = await pool()
+    async with p.acquire() as c:
+        r = await c.fetchrow(
+            "SELECT attachment_name, attachment_path, attachment_mime FROM return_requests WHERE id=$1",
+            rid,
+        )
+    if not r or not r["attachment_path"]:
+        raise HTTPException(404, "لا يوجد ملف مرفق")
+    fp = Path(r["attachment_path"])
+    if not fp.exists():
+        raise HTTPException(404, "الملف غير موجود على الخادم")
+    return FileResponse(
+        str(fp),
+        media_type=r["attachment_mime"] or "application/octet-stream",
+        filename=r["attachment_name"] or fp.name,
+    )
+
+
 @app.get("/returns/api/config")
 async def config():
     return {"reasons": REASONS, "assignees": ASSIGNEES, "status_labels": STATUS_LABELS}
@@ -336,6 +405,9 @@ function card(x){
       '<div class="rowf"><span class="k">الحساب البنكي</span><span class="v copyv"><span class="ltr">'+acc+'</span><button class="cbtn" onclick="copy(\''+acc+'\',this)">نسخ</button></span></div>'+
       '<div class="rowf"><span class="k">الآيبان</span><span class="v copyv"><span class="ltr">'+iban+'</span><button class="cbtn" onclick="copy(\''+iban+'\',this)">نسخ</button></span></div>'+
       '<div class="rowf"><span class="k">الموظف المسؤول</span><span class="v">'+esc(x.assignee||"—")+'</span></div>'+
+      '<div class="rowf"><span class="k">ملف الحساب البنكي</span><span class="v">'+
+        (x.attachment_name?('<a class="olink" href="/returns/api/requests/'+x.id+'/attachment" target="_blank">\u2B07 '+esc(x.attachment_name)+'</a>'):'—')+
+      '</span></div>'+
       '<div class="sbtns">'+
         '<button class="sbtn will'+(x.status==="will"?" active":"")+'" onclick="setStatus('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
         '<button class="sbtn doing'+(x.status==="doing"?" active":"")+'" onclick="setStatus('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+

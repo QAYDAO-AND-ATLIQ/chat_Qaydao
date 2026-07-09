@@ -22,6 +22,10 @@ services:
     restart: unless-stopped
     env_file:
       - ./.env
+    environment:
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - returns-uploads:/data/uploads
     depends_on:
       - returns_db
     networks:
@@ -37,3 +41,5 @@ networks:
 volumes:
   returns-pgdata:
     name: returns_pgdata
+  returns-uploads:
+    name: returns_uploads
