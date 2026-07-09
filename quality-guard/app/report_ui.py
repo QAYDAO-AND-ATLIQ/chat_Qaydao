@@ -92,7 +92,6 @@ _EXPORT_HEADERS = [
 _ALERT_TYPE_AR = {
     "first_response_delay":     "\u062a\u0623\u062e\u0651\u0631 \u0627\u0644\u0631\u062f \u0627\u0644\u0623\u0648\u0644",
     "missing_rating_close":     "\u0625\u063a\u0644\u0627\u0642 \u0628\u062f\u0648\u0646 \u062a\u0642\u064a\u064a\u0645",
-    "reply_without_assignment": "\u0631\u062f \u0628\u062f\u0648\u0646 \u062a\u0648\u0643\u064a\u0644",
     "missing_greeting":         "\u063a\u064a\u0627\u0628 \u0627\u0644\u062a\u062d\u064a\u0629",
     "customer_abuse":           "\u0625\u0633\u0627\u0621\u0629 \u0645\u0646 \u0627\u0644\u0639\u0645\u064a\u0644",
     "abuse":                    "\u0625\u0633\u0627\u0621\u0629 \u0645\u0646 \u0627\u0644\u0639\u0645\u064a\u0644",
@@ -429,7 +428,6 @@ _PAGE = r"""<!doctype html>
         <option value="missing_rating_close">نقص تقييم</option>
         <option value="first_response_delay">تأخر الرد الأولي</option>
         <option value="official_policy_mismatch">مخالفة سياسة رسمية</option>
-        <option value="reply_without_assignment">رد من موظف غير موكّل</option>
         <option value="customer_abuse">إساءة من العميل</option>
         <option value="excessive_internal_notes">كثرة الملاحظات الداخلية</option>
       </select></label>
@@ -593,7 +591,7 @@ _PAGE = r"""<!doctype html>
 
 <script>
 const SEV = {high:'عالية',medium:'متوسطة',low:'منخفضة'};
-const TYPE = {abuse:'إساءة/أسلوب',unprofessional_reply:'رد غير مهني',unprofessional_note:'نوت غير مهني',internal_argument:'جدال داخلي',policy_risk:'مخاطرة سياسة',sales_risk:'مخاطرة سعرية',delay_handling_risk:'تعامل مع التأخير',missing_greeting:'نقص ترحيب',missing_closing_check:'نقص ختام',missing_rating_close:'نقص تقييم',first_response_delay:'تأخر الرد الأولي',official_policy_mismatch:'مخالفة سياسة رسمية',reply_without_assignment:'رد من موظف غير موكّل',customer_abuse:'إساءة من العميل',excessive_internal_notes:'كثرة الملاحظات الداخلية',response_delay:'تأخر بالرد'};
+const TYPE = {abuse:'إساءة/أسلوب',unprofessional_reply:'رد غير مهني',unprofessional_note:'نوت غير مهني',internal_argument:'جدال داخلي',policy_risk:'مخاطرة سياسة',sales_risk:'مخاطرة سعرية',delay_handling_risk:'تعامل مع التأخير',missing_greeting:'نقص ترحيب',missing_closing_check:'نقص ختام',missing_rating_close:'نقص تقييم',first_response_delay:'تأخر الرد الأولي',official_policy_mismatch:'مخالفة سياسة رسمية',customer_abuse:'إساءة من العميل',excessive_internal_notes:'كثرة الملاحظات الداخلية',response_delay:'تأخر بالرد'};
 const DIR = {to_customer:'للعميل',internal_note:'نوت داخلي',from_customer:'من العميل'};
 const CHAN = {'Channel::WebWidget':'دردشة الموقع','Channel::Api':'واتساب/API','Channel::Whatsapp':'واتساب','Channel::Email':'بريد إلكتروني','Channel::TwitterProfile':'تويتر','Channel::FacebookPage':'فيسبوك','Channel::Telegram':'تيليجرام','Channel::Sms':'رسائل SMS','Channel::Line':'لاين'};
 const SUPSTAT = {not_reviewed:'لم تتم المراجعة',reviewed:'تمت المراجعة والتنبيه'};

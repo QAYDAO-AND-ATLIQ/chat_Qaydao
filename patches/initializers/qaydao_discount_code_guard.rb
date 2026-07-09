@@ -43,10 +43,12 @@ Rails.application.config.to_prepare do
     # A discount CODE actually present in an AI reply. Deliberately narrow so it
     # does NOT match prices ("1050 ريال") or product links ("qaydao.com/-/p281483017").
     # Matches: explicit coupon/discount words + a token, "code: X", "الكود X",
-    # and standalone code-like tokens AI/F5 or CAPS+DIGITS combos.
+    # and CAPS+DIGITS code combos. NOTE: bare tokens like "AI"/"F5" are intentionally
+    # NOT matched on their own (they collide with ordinary text such as the word "AI"),
+    # since the discount-intent path already redirects those; a code only counts when it
+    # appears in an explicit coupon/discount context or as a CAPS+DIGITS combo.
     QAYDAO_CODE_IN_REPLY = /
       (?:كود|كوبون|بروموكود|promo\s*code|coupon\s*code|discount\s*code|الكود)\s*[:：\-]?\s*[A-Za-z0-9]{2,} |
-      \b(?:AI|F5)\b |
       \b(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*[0-9])[A-Z0-9]{4,}\b
     /x.freeze
 
