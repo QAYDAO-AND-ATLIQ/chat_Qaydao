@@ -179,7 +179,7 @@ async def list_requests(conversation_id: Optional[int] = None):
                 conversation_id,
             )
             return row_to_dict(r) if r else JSONResponse(None)
-        rows = await c.fetch("SELECT * FROM return_requests ORDER BY id DESC LIMIT 200")
+        rows = await c.fetch("SELECT * FROM return_requests ORDER BY id DESC LIMIT 2000")
         return [row_to_dict(r) for r in rows]
 
 
@@ -323,6 +323,12 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .pill{margin-inline-start:auto;background:var(--oksoft);color:var(--ok);border:1px solid #bfe3cd;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700}
 .tools{display:flex;gap:10px;align-items:center;margin:18px 0;flex-wrap:wrap}
 .tools select,.tools input{font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 6px}
+.tab{font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--soft);border-radius:999px;padding:8px 16px;transition:.15s;display:flex;align-items:center;gap:7px}
+.tab:hover{border-color:var(--brand);color:var(--brand)}
+.tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.tab .cnt{font-size:11px;font-weight:700;background:rgba(0,0,0,.12);border-radius:999px;padding:1px 7px;min-width:18px;text-align:center}
+.tab.active .cnt{background:rgba(255,255,255,.28)}
 .refresh{margin-inline-start:auto;background:var(--brand);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
 .count{font-size:12.5px;color:var(--soft)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
@@ -376,20 +382,19 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
   <span class="pill" id="live">● متصل</span>
 </div></header>
 <div class="wrap">
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="active" onclick="setTab('active',this)">النشطة <span class="cnt" id="cnt-active">0</span></button>
+    <button class="tab" data-tab="done" onclick="setTab('done',this)">تم الإرجاع <span class="cnt" id="cnt-done">0</span></button>
+    <button class="tab" data-tab="rejected" onclick="setTab('rejected',this)">مرفوض <span class="cnt" id="cnt-rejected">0</span></button>
+    <button class="tab" data-tab="all" onclick="setTab('all',this)">الكل <span class="cnt" id="cnt-all">0</span></button>
+  </div>
   <div class="tools">
-    <select id="fstatus" onchange="render()">
-      <option value="">كل الحالات</option>
-      <option value="new">جديد</option>
-      <option value="will">سيتم الإرجاع</option>
-      <option value="doing">جاري الإرجاع</option>
-      <option value="done">تم الإرجاع</option>
-    </select>
-    <input id="fsearch" placeholder="بحث بالاسم أو رقم الطلب…" oninput="render()">
+    <input id="fsearch" placeholder="بحث بالاسم أو رقم الطلب أو المحادثة…" oninput="render()">
     <span class="count" id="count"></span>
     <button class="refresh" onclick="load()">تحديث ⟳</button>
   </div>
   <div class="grid" id="grid"></div>
-  <div class="empty" id="empty" style="display:none">لا توجد طلبات إرجاع بعد.</div>
+  <div class="empty" id="empty" style="display:none">لا توجد طلبات في هذا القسم.</div>
   <footer>QAYDAO · صفحة المحاسب · التخزين في خدمة مستقلة — لا يوجد ربط فعلي مع قاعدة بيانات Chatwoot أو سلة</footer>
 </div>
 <div class="toast" id="toast"></div>
@@ -401,12 +406,35 @@ function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){retu
 function toast(m){var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},2200)}
 function copy(v,btn){navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textContent="تم ✓";btn.classList.add("ok");setTimeout(function(){btn.textContent=o;btn.classList.remove("ok")},1400)})}
 function load(){fetch(API).then(function(r){return r.json()}).then(function(d){DATA=Array.isArray(d)?d:[];render()}).catch(function(){document.getElementById("live").textContent="● غير متصل";document.getElementById("live").style.color="#c0392b"})}
+var CURTAB="active";
+function setTab(t,btn){
+  CURTAB=t;
+  var tabs=document.querySelectorAll("#tabs .tab");
+  for(var i=0;i<tabs.length;i++)tabs[i].classList.remove("active");
+  if(btn)btn.classList.add("active");
+  render();
+}
+function inTab(x){
+  if(CURTAB==="all")return true;
+  if(CURTAB==="active")return (x.status==="new"||x.status==="will"||x.status==="doing");
+  return x.status===CURTAB; // done | rejected
+}
+function updateCounts(){
+  var a=0,d=0,r=0;
+  DATA.forEach(function(x){
+    if(x.status==="done")d++;
+    else if(x.status==="rejected")r++;
+    else a++;
+  });
+  var set=function(id,n){var e=document.getElementById(id);if(e)e.textContent=n};
+  set("cnt-active",a);set("cnt-done",d);set("cnt-rejected",r);set("cnt-all",DATA.length);
+}
 function render(){
-  var st=document.getElementById("fstatus").value;
+  updateCounts();
   var q=document.getElementById("fsearch").value.trim().toLowerCase();
   var list=DATA.filter(function(x){
-    if(st&&x.status!==st)return false;
-    if(q){var h=((x.customer_name||"")+" "+(x.order_number||"")).toLowerCase();if(h.indexOf(q)<0)return false}
+    if(!inTab(x))return false;
+    if(q){var h=((x.customer_name||"")+" "+(x.order_number||"")+" "+(x.conversation_id||"")).toLowerCase();if(h.indexOf(q)<0)return false}
     return true;
   });
   document.getElementById("count").textContent=list.length+" طلب";
