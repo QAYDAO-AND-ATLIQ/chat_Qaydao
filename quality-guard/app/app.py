@@ -611,21 +611,10 @@ async def report(date_from: str = Query(default=None), date_to: str = Query(defa
         rows = await c.fetch(q, *args)
     return {"count": len(rows), "alerts": [dict(r) for r in rows]}
 
-@app.put("/alert/{alert_id}/supervisor-status")
-async def update_supervisor_status(alert_id: int, payload: dict = Body(...)):
-    """Update supervisor review status. Only two valid values:
-    'not_reviewed' and 'reviewed'. Display labels are handled in the UI."""
-    new_status = (payload.get("status") or "").strip()
-    if new_status not in ("not_reviewed", "reviewed"):
-        return Response(content="invalid status", status_code=400)
-    actor = (payload.get("actor") or "").strip() or None
-    p = await pool()
-    async with p.acquire() as c:
-        await c.execute(
-            "UPDATE qg_alerts SET supervisor_status=$2, supervisor_note=$3 WHERE id=$1",
-            alert_id, new_status,
-            (("\u062d\u062f\u0651\u062b\u0647\u0627: " + actor) if actor else None))
-    return {"id": alert_id, "supervisor_status": new_status}
+@app.put("/alerts/_moved_to_router")
+async def _supervisor_status_moved():
+    """Supervisor-status endpoints moved into report_ui.router (prefixed /quality-guard)."""
+    return {"moved": True}
 
 
 @app.get("/report.csv")

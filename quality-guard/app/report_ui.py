@@ -4,7 +4,7 @@ Mounted into app.py. Served under the /quality-guard path prefix (nginx X-Forwar
 All endpoints read-only from the isolated quality_guard DB.
 """
 import io, datetime
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Response, Body
 from fastapi.responses import HTMLResponse
 
 router = APIRouter()
@@ -41,6 +41,8 @@ async def stats():
         high       = await scalar("SELECT count(*) FROM qg_alerts WHERE severity='high'")
         delays     = await scalar("SELECT count(*) FROM qg_alerts WHERE alert_type='response_delay'")
         notes      = await scalar("SELECT count(*) FROM qg_alerts WHERE message_direction='internal_note'")
+        sup_reviewed     = await scalar("SELECT count(*) FROM qg_alerts WHERE supervisor_status='reviewed'")
+        sup_not_reviewed = await scalar("SELECT count(*) FROM qg_alerts WHERE supervisor_status IS DISTINCT FROM 'reviewed'")
         top_emp    = await c.fetchrow("SELECT employee_name, count(*) n FROM qg_alerts GROUP BY employee_name ORDER BY n DESC LIMIT 1")
         top_type   = await c.fetchrow("SELECT alert_type, count(*) n FROM qg_alerts GROUP BY alert_type ORDER BY n DESC LIMIT 1")
         # improvement vs previous month
@@ -51,6 +53,7 @@ async def stats():
     return {
         "today": today, "this_week": this_week, "this_month": this_month,
         "high": high, "delays": delays, "notes": notes,
+        "sup_reviewed": sup_reviewed, "sup_not_reviewed": sup_not_reviewed,
         "top_employee": dict(top_emp) if top_emp else None,
         "top_type": dict(top_type) if top_type else None,
         "improvement_pct_vs_prev_month": delta,
@@ -81,7 +84,7 @@ async def report_xlsx():
 @router.get("/report")
 async def report(date_from: str = Query(default=None), date_to: str = Query(default=None),
                  employee: str = Query(default=None), alert_type: str = Query(default=None),
-                 severity: str = Query(default=None)):
+                 severity: str = Query(default=None), sup_status: str = Query(default=None)):
     p = await _pool()
     q = "SELECT * FROM qg_alerts WHERE 1=1"
     args, i = [], 0
@@ -93,6 +96,10 @@ async def report(date_from: str = Query(default=None), date_to: str = Query(defa
     if employee:  q += add("employee_email =", employee)
     if alert_type:q += add("alert_type =", alert_type)
     if severity:  q += add("severity =", severity)
+    if sup_status == 'reviewed':
+        q += " AND supervisor_status = 'reviewed'"
+    elif sup_status == 'not_reviewed':
+        q += " AND supervisor_status IS DISTINCT FROM 'reviewed'"
     q += " ORDER BY created_at DESC LIMIT 1000"
     async with p.acquire() as c:
         rows = await c.fetch(q, *args)
@@ -113,6 +120,42 @@ async def report_csv():
             w.writerow({k: ("" if v is None else v) for k, v in dict(r).items()})
     return Response(content=buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=quality_guard.csv"})
+
+
+@router.put("/alert/{alert_id}/supervisor-status")
+async def qg_update_supervisor_status(alert_id: int, payload: dict = Body(...)):
+    """Update supervisor review status (single). Values: not_reviewed | reviewed."""
+    new_status = (payload.get("status") or "").strip()
+    if new_status not in ("not_reviewed", "reviewed"):
+        return Response(content="invalid status", status_code=400)
+    actor = (payload.get("actor") or "").strip() or None
+    note = (("\u062d\u062f\u0651\u062b\u0647\u0627: " + actor) if actor else None)
+    p = await _pool()
+    async with p.acquire() as c:
+        await c.execute(
+            "UPDATE qg_alerts SET supervisor_status=$2, supervisor_note=$3 WHERE id=$1",
+            alert_id, new_status, note)
+    return {"id": alert_id, "supervisor_status": new_status}
+
+
+@router.put("/alerts/bulk-supervisor-status")
+async def qg_bulk_supervisor_status(payload: dict = Body(...)):
+    """Bulk-update supervisor review status for multiple alerts at once."""
+    new_status = (payload.get("status") or "").strip()
+    if new_status not in ("not_reviewed", "reviewed"):
+        return Response(content="invalid status", status_code=400)
+    ids = payload.get("ids") or []
+    ids = [int(x) for x in ids if str(x).strip().isdigit()]
+    if not ids:
+        return Response(content="no ids", status_code=400)
+    actor = (payload.get("actor") or "").strip() or None
+    note = (("\u062d\u062f\u0651\u062b\u0647\u0627: " + actor) if actor else None)
+    p = await _pool()
+    async with p.acquire() as c:
+        await c.execute(
+            "UPDATE qg_alerts SET supervisor_status=$2, supervisor_note=$3 WHERE id = ANY($1::int[])",
+            ids, new_status, note)
+    return {"updated": len(ids), "supervisor_status": new_status}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -136,27 +179,50 @@ _PAGE = r"""<!doctype html>
   }
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
     font-family:-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;font-size:14px}
-  .wrap{max-width:1080px;margin:0 auto;padding:28px clamp(16px,4vw,40px) 48px}
+  .wrap{max-width:1240px;margin:0 auto;padding:28px clamp(16px,4vw,40px) 48px}
   h1{font-size:19px;margin:0 0 4px} .sub{color:var(--muted);margin:0 0 16px;font-size:13px}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:26px}
+  .weekly-reminder{display:flex;align-items:flex-start;gap:12px;background:#fff8e6;border:1px solid #f5d78a;border-inline-start:5px solid #e0a106;border-radius:12px;padding:14px 16px;margin-bottom:20px;box-shadow:0 1px 3px rgba(224,161,6,.08)}
+  .weekly-reminder .wr-icon{font-size:20px;line-height:1.4;flex-shrink:0}
+  .weekly-reminder .wr-text{font-size:13.5px;line-height:1.7;color:#7a5a00}
+  .weekly-reminder .wr-text strong{color:#8a4b00;font-weight:700}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
   .card .k{color:var(--muted);font-size:12px;margin-bottom:6px}
   .card .v{font-size:24px;font-weight:700} .card .v.sm{font-size:15px}
+  .card.danger{background:#fef2f2;border-color:#fca5a5}
+  .card.danger .k{color:#b91c1c} .card.danger .v{color:#dc2626}
   .filters{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;
     display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:14px}
   .filters label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
   .filters input,.filters select{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px;min-width:120px}
   .btn{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px}
   .btn.ghost{background:#fff;color:var(--brand);border:1px solid var(--brand)}
-  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:top}
-  th{background:#fafbfc;color:var(--muted);font-weight:600;white-space:nowrap}
+  .tblwrap{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{padding:8px 8px;text-align:right;border-bottom:1px solid var(--line);font-size:11.5px;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
+  th{font-size:11.5px}
+  th{background:#fafbfc;color:var(--muted);font-weight:600;white-space:nowrap;position:sticky;top:0;z-index:1}
+  tbody tr:hover{background:#fafbfc}
   tr:last-child td{border-bottom:0}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .cell{color:var(--ink);line-height:1.55;white-space:normal}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
   .pill.high{background:#fde8e8;color:var(--high)} .pill.medium{background:#fef3e2;color:var(--med)} .pill.low{background:#e8f5ec;color:var(--low)}
   .empty{padding:40px;text-align:center;color:var(--muted)}
   .row-actions{display:flex;gap:10px;margin-bottom:18px}
-  .snip{max-width:280px;color:var(--ink)} .muted{color:var(--muted)}
+  .bulkbar{display:flex;align-items:center;gap:12px;background:#eef5ff;border:1px solid #bcd4f6;border-radius:10px;padding:10px 14px;margin-bottom:12px}
+  .bulkbar .bulkcount{font-size:13px;font-weight:600;color:var(--brand)}
+  td input[type=checkbox],th input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--brand)}
+  .snip{color:var(--ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;line-height:1.5;cursor:pointer}
+  .snip.open{-webkit-line-clamp:unset}
+  .muted{color:var(--muted)}
+  .pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px}
+  .pager .info{font-size:12.5px;color:var(--muted)}
+  .pager .pages{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .pager button{min-width:34px;height:34px;padding:0 10px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;cursor:pointer;font-size:13px}
+  .pager button:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+  .pager button.active{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .pager button:disabled{opacity:.45;cursor:not-allowed}
+  .pager .gap{color:var(--muted);padding:0 2px}
   .tabs{display:flex;gap:8px;margin:8px 0 4px}
   .tab{background:#fff;border:1px solid var(--line);border-radius:8px 8px 0 0;padding:8px 16px;cursor:pointer;font-size:13px}
   .tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
@@ -228,6 +294,14 @@ _PAGE = r"""<!doctype html>
   <p class="sub">مراقبة جودة ردود خدمة العملاء والملاحظات الداخلية · QAYDAO</p>
   <div id="panel-reports">
 
+  <div class="weekly-reminder">
+    <span class="wr-icon">📌</span>
+    <div class="wr-text">
+      <strong>تذكير أسبوعي للمشرف:</strong>
+      يجب سحب التقرير الأسبوعي لجودة الخدمة ودمجه مع التقرير الأسبوعي لقسم خدمة العملاء ومشاركته مع الإدارة قبل الاجتماع الأسبوعي.
+    </div>
+  </div>
+
   <div class="cards" id="cards"></div>
 
   <div class="filters">
@@ -258,6 +332,12 @@ _PAGE = r"""<!doctype html>
         <option value="">الكل</option><option value="high">عالية</option>
         <option value="medium">متوسطة</option><option value="low">منخفضة</option>
       </select></label>
+    <label>حالة المشرف
+      <select id="sup_status">
+        <option value="">الكل</option>
+        <option value="reviewed">تم تنبيه الموظف</option>
+        <option value="not_reviewed">لم يتم تنبيه الموظف</option>
+      </select></label>
     <button class="btn" onclick="load()">تطبيق</button>
     <button class="btn ghost" onclick="clearF()">مسح</button>
   </div>
@@ -268,14 +348,32 @@ _PAGE = r"""<!doctype html>
     <button class="btn ghost" onclick="window.print()">🖨 طباعة</button>
   </div>
 
+  <div class="bulkbar" id="bulkbar" style="display:none">
+    <span class="bulkcount" id="bulkCount">0 محدد</span>
+    <button class="btn" onclick="bulkNotify()">✔ تنبيه المحدّد</button>
+    <button class="btn ghost" onclick="clearSel()">إلغاء التحديد</button>
+  </div>
+
+  <div class="tblwrap">
   <table id="tbl">
+    <colgroup>
+      <col style="width:3%"><col style="width:8%"><col style="width:9%"><col style="width:6%"><col style="width:6%">
+      <col style="width:8%"><col style="width:6%"><col style="width:16%">
+      <col style="width:13%"><col style="width:13%"><col style="width:4%"><col style="width:8%">
+    </colgroup>
     <thead><tr>
-      <th>التاريخ/الوقت</th><th>الموظف</th><th>المحادثة</th><th>القناة</th>
-      <th>النوع</th><th>الخطورة</th><th>الاتجاه</th><th>المقتطف</th>
-      <th>السبب</th><th>المقترح</th><th>متكرر</th><th>حالة المشرف</th>
+      <th><input type="checkbox" id="selAll" onclick="toggleAll(this)" title="تحديد الكل"></th>
+      <th>التاريخ/الوقت</th><th>الموظف</th><th>رقم</th><th>القناة</th>
+      <th>النوع</th><th>الخطورة</th><th>المقتطف</th>
+      <th>السبب</th><th>المقترح</th><th>متكرر</th><th>المشرف</th>
     </tr></thead>
     <tbody id="tb"><tr><td colspan="12" class="empty">جارٍ التحميل…</td></tr></tbody>
   </table>
+  </div>
+  <div class="pager" id="pager" style="display:none">
+    <div class="info" id="pgInfo"></div>
+    <div class="pages" id="pgPages"></div>
+  </div>
 </div>
 
   </div><!-- /panel-reports -->
@@ -426,6 +524,7 @@ function qs(){
   if(f('employee')) p.set('employee',f('employee'));
   if(f('alert_type')) p.set('alert_type',f('alert_type'));
   if(f('severity')) p.set('severity',f('severity'));
+  if(f('sup_status')) p.set('sup_status',f('sup_status'));
   return p.toString();
 }
 async function loadCards(){
@@ -433,42 +532,145 @@ async function loadCards(){
   const c=[
     ['تنبيهات اليوم',s.today],['هذا الأسبوع',s.this_week],['هذا الشهر',s.this_month],
     ['عالية الخطورة',s.high],['تأخر بالرد',s.delays],['نوت داخلي',s.notes],
+    ['تم تنبيه الموظف', (s.sup_reviewed||0), false, true],
+    ['لم يتم تنبيه الموظف', (s.sup_not_reviewed||0), false, true],
     ['أكثر موظف', s.top_employee? s.top_employee.employee_name+' ('+s.top_employee.n+')':'—', true],
     ['أكثر نوع', s.top_type? (TYPE[s.top_type.alert_type]||s.top_type.alert_type)+' ('+s.top_type.n+')':'—', true],
     ['مقابل الشهر السابق', s.improvement_pct_vs_prev_month==null?'—':(s.improvement_pct_vs_prev_month>0?'+':'')+s.improvement_pct_vs_prev_month+'%', true],
   ];
-  document.getElementById('cards').innerHTML=c.map(([k,v,sm])=>
-    `<div class="card"><div class="k">${k}</div><div class="v ${sm?'sm':''}">${v}</div></div>`).join('');
+  document.getElementById('cards').innerHTML=c.map(([k,v,sm,danger])=>
+    `<div class="card${danger?' danger':''}"><div class="k">${k}</div><div class="v ${sm?'sm':''}">${v}</div></div>`).join('');
 }
+var QG_ROWS=[];        // كل التنبيهات المطابقة (محمّلة)
+var QG_PAGE=1;         // الصفحة الحالية
+var QG_PER=20;         // 20 تقرير/صفحة
+var QG_SEL=new Set();  // معرّفات الصفوف المحدّدة
+
+function pageIds(){
+  const start=(QG_PAGE-1)*QG_PER;
+  return QG_ROWS.slice(start, start+QG_PER).map(a=>a.id);
+}
+function onRowSel(id, el){
+  if(el.checked) QG_SEL.add(id); else QG_SEL.delete(id);
+  syncSelUI();
+}
+function toggleAll(el){
+  const ids=pageIds();
+  if(el.checked) ids.forEach(i=>QG_SEL.add(i));
+  else ids.forEach(i=>QG_SEL.delete(i));
+  document.querySelectorAll('.rowsel').forEach(cb=>{ cb.checked = QG_SEL.has(parseInt(cb.value)); });
+  syncSelUI();
+}
+function clearSel(){
+  QG_SEL.clear();
+  document.querySelectorAll('.rowsel').forEach(cb=>cb.checked=false);
+  const sa=document.getElementById('selAll'); if(sa){sa.checked=false;sa.indeterminate=false;}
+  syncSelUI();
+}
+function syncSelUI(){
+  const n=QG_SEL.size;
+  const bar=document.getElementById('bulkbar');
+  bar.style.display = n>0 ? 'flex' : 'none';
+  document.getElementById('bulkCount').textContent = n + ' محدد';
+  // حالة checkbox "تحديد الكل" حسب صفحة العرض الحالية
+  const ids=pageIds(); const sel=ids.filter(i=>QG_SEL.has(i)).length;
+  const sa=document.getElementById('selAll');
+  if(sa){ sa.checked = ids.length>0 && sel===ids.length; sa.indeterminate = sel>0 && sel<ids.length; }
+}
+async function bulkNotify(){
+  const ids=[...QG_SEL];
+  if(!ids.length) return;
+  if(!confirm('تأكيد: تغيير حالة '+ids.length+' تنبيه إلى «تم تنبيه الموظف»؟')) return;
+  try{
+    const r=await fetch('alerts/bulk-supervisor-status',{
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ids:ids, status:'reviewed', actor:(typeof ACTOR!=='undefined'?ACTOR:'')})
+    });
+    if(!r.ok) throw new Error(await r.text());
+    // حدّث البيانات المحمّلة محلياً
+    QG_ROWS.forEach(a=>{ if(QG_SEL.has(a.id)) a.supervisor_status='reviewed'; });
+    QG_SEL.clear();
+    renderPage(); loadCards();
+  }catch(e){ alert('تعذّر تنبيه المحدّد: '+e.message); }
+}
+
 async function load(){
   loadCards();
   const q=qs();
   document.getElementById('csv').href='report.csv';
   document.getElementById('xlsx').href='report.xlsx';
-  const r=await fetch('report'+(q?'?'+q:'')); const d=await r.json();
   const tb=document.getElementById('tb');
-  if(!d.alerts||!d.alerts.length){tb.innerHTML='<tr><td colspan="12" class="empty">لا توجد تنبيهات مطابقة</td></tr>';return;}
-  tb.innerHTML=d.alerts.map(a=>{
+  tb.innerHTML='<tr><td colspan="12" class="empty">جارٍ التحميل…</td></tr>';
+  const r=await fetch('report'+(q?'?'+q:'')); const d=await r.json();
+  QG_ROWS=(d&&d.alerts)?d.alerts:[];
+  QG_PAGE=1;
+  renderPage();
+}
+
+function renderPage(){
+  const tb=document.getElementById('tb');
+  const pager=document.getElementById('pager');
+  if(!QG_ROWS.length){
+    tb.innerHTML='<tr><td colspan="12" class="empty">لا توجد تنبيهات مطابقة</td></tr>';
+    pager.style.display='none';
+    return;
+  }
+  const total=QG_ROWS.length;
+  const pages=Math.ceil(total/QG_PER);
+  if(QG_PAGE>pages) QG_PAGE=pages;
+  if(QG_PAGE<1) QG_PAGE=1;
+  const start=(QG_PAGE-1)*QG_PER;
+  const slice=QG_ROWS.slice(start, start+QG_PER);
+  tb.innerHTML=slice.map(a=>{
     const dt=new Date(a.created_at).toLocaleString('ar-SA');
     const sev=`<span class="pill ${a.severity}">${SEV[a.severity]||a.severity}</span>`;
     const rep=a.is_repeated?`نعم (${a.repeated_count})`:'لا';
     return `<tr>
+      <td><input type="checkbox" class="rowsel" value="${a.id}" ${QG_SEL.has(a.id)?'checked':''} onclick="onRowSel(${a.id},this)"></td>
       <td class="muted">${dt}</td>
-      <td>${a.employee_name||'—'}<br><span class="muted">${a.employee_email||''}</span></td>
+      <td>${a.employee_name||'—'}</td>
       <td><a href="${convLink(a.account_id, a.conversation_id)}" target="_blank" rel="noopener" class="convlink">#${a.conversation_id}</a></td>
       <td>${chanAr(a.channel_type)}</td>
       <td>${TYPE[a.alert_type]||a.alert_type}</td>
       <td>${sev}</td>
-      <td>${DIR[a.message_direction]||a.message_direction||''}</td>
-      <td class="snip">${(a.message_snippet||'').replace(/</g,'&lt;')}</td>
-      <td class="snip muted">${(a.ai_reason||'').replace(/</g,'&lt;')}</td>
-      <td class="snip muted">${(a.suggested_correction||'').replace(/</g,'&lt;')}</td>
+      <td><div class="cell">${(a.message_snippet||'').replace(/</g,'&lt;')}</div></td>
+      <td><div class="cell muted">${(a.ai_reason||'').replace(/</g,'&lt;')}</div></td>
+      <td><div class="cell muted">${(a.suggested_correction||'').replace(/</g,'&lt;')}</div></td>
       <td>${rep}</td>
       <td>${supSelect(a)}</td>
     </tr>`;
   }).join('');
+  const from=start+1, to=Math.min(start+QG_PER,total);
+  document.getElementById('pgInfo').textContent=`عرض ${from}–${to} من ${total}`;
+  buildPager(pages);
+  pager.style.display='flex';
+  syncSelUI();
 }
-function clearF(){['from','to','employee','alert_type','severity'].forEach(i=>document.getElementById(i).value='');load();}
+
+function gotoPage(p){ QG_PAGE=p; renderPage(); document.getElementById('tbl').scrollIntoView({behavior:'smooth',block:'nearest'}); }
+
+function buildPager(pages){
+  const box=document.getElementById('pgPages');
+  const cur=QG_PAGE;
+  let h='';
+  h+=`<button onclick="gotoPage(${cur-1})" ${cur<=1?'disabled':''}>‹ السابق</button>`;
+  // نافذة أرقام مختصرة: 1 … cur-1 cur cur+1 … pages
+  const nums=[];
+  const push=n=>{ if(n>=1&&n<=pages&&nums.indexOf(n)<0) nums.push(n); };
+  push(1); push(2);
+  push(cur-1); push(cur); push(cur+1);
+  push(pages-1); push(pages);
+  nums.sort((a,b)=>a-b);
+  let prev=0;
+  nums.forEach(n=>{
+    if(prev && n-prev>1) h+='<span class="gap">…</span>';
+    h+=`<button class="${n===cur?'active':''}" onclick="gotoPage(${n})">${n}</button>`;
+    prev=n;
+  });
+  h+=`<button onclick="gotoPage(${cur+1})" ${cur>=pages?'disabled':''}>التالي ›</button>`;
+  box.innerHTML=h;
+}
+function clearF(){['from','to','employee','alert_type','severity','sup_status'].forEach(i=>document.getElementById(i).value='');load();}
 load();
 // honor ?tab= from the injector
 try {
