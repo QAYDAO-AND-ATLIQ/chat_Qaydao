@@ -18,8 +18,32 @@
     return m ? parseInt(m[1], 10) : null;
   }
   function agentName() {
-    var el = document.querySelector('[class*="current-user"] , .user-name, [data-testid="user-name"]');
-    return el ? el.textContent.trim() : "";
+    // 1) Chatwoot Vuex store (most reliable)
+    try {
+      var app = document.querySelector('#app');
+      if (app && app.__vue__ && app.__vue__.$store) {
+        var u = app.__vue__.$store.getters.getCurrentUser;
+        if (u && (u.available_name || u.name)) return (u.available_name || u.name).trim();
+      }
+    } catch (e) {}
+    // 2) localStorage (Chatwoot persists auth data)
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        var v = localStorage.getItem(k);
+        if (v && v.indexOf('"name"') >= 0 && (v.indexOf('available_name') >= 0 || v.indexOf('"email"') >= 0)) {
+          var o = JSON.parse(v);
+          var d = o && (o.data || o);
+          if (d && (d.available_name || d.name)) return (d.available_name || d.name).trim();
+        }
+      }
+    } catch (e) {}
+    // 3) DOM fallbacks (avatar title / thumbnail alt)
+    var el = document.querySelector('[data-testid="user-name"], .current-user--name, .user-name');
+    if (el && el.textContent.trim()) return el.textContent.trim();
+    var av = document.querySelector('.current-user .user-thumbnail-box img, .current-user img[title]');
+    if (av && (av.getAttribute('title') || av.getAttribute('alt'))) return (av.getAttribute('title') || av.getAttribute('alt')).trim();
+    return "";
   }
   function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 
@@ -59,7 +83,11 @@
       return it;
     }
     sub.appendChild(subItem("\u2795","طلب إرجاع جديد",function(){openPanel()}));
-    sub.appendChild(subItem("\uD83D\uDCCB","الطلبات المرفوعة",function(){window.open("/returns/team-requests","_blank")}));
+    sub.appendChild(subItem("\uD83D\uDCCB","الطلبات المرفوعة",function(){
+      var nm=agentName();
+      var url="/returns/team-requests"+(nm?("?agent="+encodeURIComponent(nm)):"");
+      window.open(url,"_blank");
+    }));
 
     head.onclick=function(e){
       e.preventDefault();

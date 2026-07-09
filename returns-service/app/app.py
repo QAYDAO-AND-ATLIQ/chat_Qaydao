@@ -320,6 +320,7 @@ header{background:var(--surface);border-bottom:1px solid var(--line);padding:20p
 .logo{width:44px;height:44px;border-radius:11px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:19px}
 h1{font-size:20px;font-weight:800}
 header p{font-size:13px;color:var(--soft);margin-top:2px}
+.motiv-acc{margin-inline-start:auto;max-width:280px;font-size:12.5px;font-weight:600;color:var(--brand);background:linear-gradient(135deg,var(--brandsoft),#f3f9f8);border:1px solid #d5e6e4;border-radius:12px;padding:10px 14px;line-height:1.5}
 .pill{margin-inline-start:auto;background:var(--oksoft);color:var(--ok);border:1px solid #bfe3cd;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700}
 .tools{display:flex;gap:10px;align-items:center;margin:18px 0;flex-wrap:wrap}
 .tools select,.tools input{font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
@@ -379,6 +380,7 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
 <header><div class="wrap hrow">
   <div class="logo">Q</div>
   <div><h1>إدارة المرجعات — المحاسبة</h1><p>عرض طلبات الإرجاع الواردة من خدمة العملاء وتحديث حالتها.</p></div>
+  <div class="motiv-acc">✨ دقّتك في المراجعة تحمي حقوق العملاء والمتجر — شكراً لك</div>
   <span class="pill" id="live">● متصل</span>
 </div></header>
 <div class="wrap">
@@ -567,6 +569,10 @@ header{background:var(--surface);border-bottom:1px solid var(--line);padding:18p
 .logo{width:42px;height:42px;border-radius:11px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:18px}
 h1{font-size:19px;font-weight:800}
 header p{font-size:12.5px;color:var(--soft);margin-top:2px}
+.motiv{margin-inline-start:auto;max-width:290px;text-align:start;background:linear-gradient(135deg,var(--brandsoft),#f3f9f8);border:1px solid #d5e6e4;border-radius:12px;padding:11px 15px;display:none}
+.motiv.show{display:block}
+.motiv .mn{font-size:13.5px;font-weight:800;color:var(--brand)}
+.motiv .mp{font-size:12px;color:#2b4a47;margin-top:2px;line-height:1.5}
 .tools{display:flex;gap:10px;align-items:center;margin:16px 0;flex-wrap:wrap}
 .tools select,.tools input{font-family:inherit;font-size:13.5px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
 .refresh{margin-inline-start:auto;background:var(--brand);color:#fff;border:none;border-radius:10px;padding:8px 15px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
@@ -593,6 +599,7 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
 <header><div class="wrap hrow">
   <div class="logo">Q</div>
   <div><h1>الطلبات المرفوعة للمحاسب</h1><p>تابع حالة كل طلب إرجاع رفعته للمحاسب وردّه عليه — للرد على العميل.</p></div>
+  <div class="motiv" id="motiv"></div>
 </div></header>
 <div class="wrap">
   <div id="rejbar" class="rejbar"></div>
@@ -622,6 +629,28 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
 <script>
 var API="/returns/api/team-requests";
 var EMAIL="financial@qaydao.com";
+(function(){
+  var PHRASES=[
+    "ابتسامتك هي قوتك وأداؤك هو نجاحك",
+    "كل رد منك يصنع فرقاً لدى عميل",
+    "احترافيتك اليوم سمعة QAYDAO غداً",
+    "أنت خط الدفاع الأول عن رضا عملائنا",
+    "جهدك ملحوظ وأثره باقٍ — استمر",
+    "الاهتمام بالتفاصيل هو ما يميّزك",
+    "عميل سعيد اليوم بفضل تعبك — شكراً لك"
+  ];
+  function param(n){try{return new URLSearchParams(location.search).get(n)||""}catch(e){return ""}}
+  function firstName(f){f=(f||"").trim();return f?f.split(/\s+/)[0]:""}
+  function esc0(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+  var nm=firstName(param("agent"));
+  var phrase=PHRASES[new Date().getDate()%PHRASES.length];
+  var box=document.getElementById("motiv");
+  if(box){
+    box.innerHTML=(nm?('<div class="mn">\u2728 '+esc0(nm)+'</div>'):'<div class="mn">\u2728 أهلاً بك</div>')+
+      '<div class="mp">'+esc0(phrase)+'</div>';
+    box.classList.add("show");
+  }
+})();
 var DATA=[];
 var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض"};
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
