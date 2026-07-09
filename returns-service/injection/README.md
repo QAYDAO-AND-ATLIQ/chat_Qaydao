@@ -36,6 +36,8 @@ nginx -t && systemctl reload nginx
 
 # 3. create the accountant basic-auth user
 htpasswd -cB /etc/nginx/.htpasswd-accountant-returns financial@qaydao.com
+# add the admin monitoring account (same page, view/monitor):
+htpasswd -B /etc/nginx/.htpasswd-accountant-returns rami@qaydao.com
 ```
 
 > ⚠ Re-check the injected script after every Chatwoot upgrade (same as all `qaydao-*.js`).
