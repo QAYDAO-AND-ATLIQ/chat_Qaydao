@@ -358,6 +358,9 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .qd-reject-wrap{display:none;margin-top:8px}
 .qd-reject-wrap.show{display:block}
 .qd-reject-wrap textarea{border-color:#f3c6c1;background:#fdeded}
+.rejsend{flex:1;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border-radius:9px;padding:9px 6px;border:none;background:#c0392b;color:#fff;transition:.15s}
+.rejsend:hover{background:#a5301f}
+.rejcancel{font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border-radius:9px;padding:9px 14px;border:1px solid var(--line);background:#f8fafb;color:var(--soft)}
 .hist{margin-top:11px;font-size:11.5px;color:var(--soft);background:#f8fafb;border-radius:9px;padding:9px 11px;display:none}
 .hist.show{display:block}
 .hist b{color:var(--ink)}
@@ -419,6 +422,7 @@ function card(x){
   return '<div class="card">'+
     '<div class="chead"><span class="nm">'+esc(x.customer_name||"—")+'</span><span class="st '+x.status+'">'+esc(SL[x.status]||x.status)+'</span></div>'+
     '<div class="cbody">'+
+      '<div class="rowf"><span class="k">اسم العميل</span><span class="v">'+esc(x.customer_name||"—")+'</span></div>'+
       '<div class="rowf"><span class="k">رقم الطلب</span><span class="v">'+order+'</span></div>'+
       '<div class="rowf"><span class="k">مبلغ الطلب</span><span class="v">'+esc(x.order_amount||"—")+'</span></div>'+
       '<div class="rowf"><span class="k">سبب الإرجاع</span><span class="v">'+esc(x.reason||"—")+'</span></div>'+
@@ -432,10 +436,12 @@ function card(x){
         (x.attachment_name?('<a class="olink" href="/returns/api/requests/'+x.id+'/attachment" target="_blank">\u2B07 '+esc(x.attachment_name)+'</a>'):'—')+
       '</span></div>'+
       (x.reject_reason?('<div class="rowf"><span class="k" style="color:#c0392b">سبب الرفض</span><span class="v" style="color:#c0392b">'+esc(x.reject_reason)+'</span></div>'):'')+
-      '<div class="qd-note-lbl">ملاحظة للموظف (اختياري)</div>'+
-      '<textarea class="qd-note-in" id="note_'+x.id+'" rows="2" placeholder="تُرسل للموظف مع الحالة…">'+esc(x.accountant_note||"")+'</textarea>'+
-      '<div class="qd-reject-wrap" id="rejw_'+x.id+'"><div class="qd-note-lbl" style="color:#c0392b">سبب الرفض (إلزامي عند الرفض)</div>'+
-        '<textarea class="qd-note-in" id="rej_'+x.id+'" rows="2" placeholder="اكتب سبب الرفض…">'+esc(x.reject_reason||"")+'</textarea></div>'+
+      '<div class="qd-reject-wrap" id="rejw_'+x.id+'"><div class="qd-note-lbl" style="color:#c0392b">سبب الرفض (إلزامي)</div>'+
+        '<textarea class="qd-note-in" id="rej_'+x.id+'" rows="2" placeholder="اكتب سبب الرفض…">'+esc(x.reject_reason||"")+'</textarea>'+
+        '<div style="display:flex;gap:8px;margin-top:8px">'+
+          '<button class="rejsend" onclick="confirmReject('+x.id+',this)">تأكيد الرفض وإرسال</button>'+
+          '<button class="rejcancel" onclick="cancelReject('+x.id+')">إلغاء</button>'+
+        '</div></div>'+
       '<div class="sbtns">'+
         '<button class="sbtn will'+(x.status==="will"?" active":"")+'" onclick="setStatus('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
         '<button class="sbtn doing'+(x.status==="doing"?" active":"")+'" onclick="setStatus('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+
@@ -446,23 +452,25 @@ function card(x){
     '</div></div>';
 }
 function orderClick(n){toast("رقم الطلب "+n+" — الربط مع سلة سيُفعّل لاحقاً.");return false}
-function noteVal(id){var e=document.getElementById("note_"+id);return e?e.value.trim():""}
 function rejectClick(id,btn){
   var wrap=document.getElementById("rejw_"+id);
   var rej=document.getElementById("rej_"+id);
-  if(wrap && !wrap.classList.contains("show")){
-    wrap.classList.add("show");
-    if(rej)rej.focus();
-    toast("اكتب سبب الرفض ثم اضغط \u0022مرفوض\u0022 مرة أخرى للتأكيد.");
-    return;
-  }
+  if(wrap){wrap.classList.add("show");if(rej)rej.focus();}
+  toast("اكتب سبب الرفض ثم اضغط \u0022تأكيد الرفض وإرسال\u0022.");
+}
+function cancelReject(id){
+  var wrap=document.getElementById("rejw_"+id);
+  if(wrap)wrap.classList.remove("show");
+}
+function confirmReject(id,btn){
+  var rej=document.getElementById("rej_"+id);
   var reason=rej?rej.value.trim():"";
-  if(!reason){if(rej)rej.focus();toast("سبب الرفض مطلوب قبل التأكيد.");return}
+  if(!reason){if(rej)rej.focus();toast("سبب الرفض مطلوب قبل الإرسال.");return}
   setStatus(id,"rejected",btn,reason);
 }
 function setStatus(id,st,btn,rejectReason){
   btn.disabled=true;
-  var payload={status:st,changed_by:"financial@qaydao.com",accountant_note:noteVal(id)};
+  var payload={status:st,changed_by:"financial@qaydao.com"};
   if(st==="rejected")payload.reject_reason=rejectReason||"";
   fetch(API+"/"+id+"/status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
     .then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||0}});return r.json()})
