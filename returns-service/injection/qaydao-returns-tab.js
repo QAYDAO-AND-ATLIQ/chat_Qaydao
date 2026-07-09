@@ -17,33 +17,36 @@
     var m = location.pathname.match(/\/conversations\/(\d+)/) || location.pathname.match(/\/inbox\/[^/]*\/(\d+)/);
     return m ? parseInt(m[1], 10) : null;
   }
+  // Cache the agent name once fetched, so we don't call the API repeatedly.
+  var __agentNameCache = null;
+  // Synchronous best-effort (used by the save() path); may be empty on Vue3.
   function agentName() {
-    // 1) Chatwoot Vuex store (most reliable)
-    try {
-      var app = document.querySelector('#app');
-      if (app && app.__vue__ && app.__vue__.$store) {
-        var u = app.__vue__.$store.getters.getCurrentUser;
-        if (u && (u.available_name || u.name)) return (u.available_name || u.name).trim();
-      }
-    } catch (e) {}
-    // 2) localStorage (Chatwoot persists auth data)
+    if (__agentNameCache) return __agentNameCache;
+    // localStorage fallback (some Chatwoot builds persist auth here)
     try {
       for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        var v = localStorage.getItem(k);
+        var v = localStorage.getItem(localStorage.key(i));
         if (v && v.indexOf('"name"') >= 0 && (v.indexOf('available_name') >= 0 || v.indexOf('"email"') >= 0)) {
-          var o = JSON.parse(v);
-          var d = o && (o.data || o);
-          if (d && (d.available_name || d.name)) return (d.available_name || d.name).trim();
+          var o = JSON.parse(v); var d = o && (o.data || o);
+          if (d && (d.available_name || d.name)) { __agentNameCache = (d.available_name || d.name).trim(); return __agentNameCache; }
         }
       }
     } catch (e) {}
-    // 3) DOM fallbacks (avatar title / thumbnail alt)
-    var el = document.querySelector('[data-testid="user-name"], .current-user--name, .user-name');
-    if (el && el.textContent.trim()) return el.textContent.trim();
-    var av = document.querySelector('.current-user .user-thumbnail-box img, .current-user img[title]');
-    if (av && (av.getAttribute('title') || av.getAttribute('alt'))) return (av.getAttribute('title') || av.getAttribute('alt')).trim();
     return "";
+  }
+  // Reliable async fetch via Chatwoot's own profile API (uses the logged-in cookie).
+  function fetchAgentName(cb) {
+    if (__agentNameCache) { cb(__agentNameCache); return; }
+    var quick = agentName();
+    if (quick) { cb(quick); return; }
+    fetch("/api/v1/profile", { credentials: "same-origin", headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (u) {
+        var nm = u ? (u.available_name || u.name || "") : "";
+        if (nm) __agentNameCache = nm.trim();
+        cb(__agentNameCache || "");
+      })
+      .catch(function () { cb(""); });
   }
   function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 
@@ -84,9 +87,10 @@
     }
     sub.appendChild(subItem("\u2795","طلب إرجاع جديد",function(){openPanel()}));
     sub.appendChild(subItem("\uD83D\uDCCB","الطلبات المرفوعة",function(){
-      var nm=agentName();
-      var url="/returns/team-requests"+(nm?("?agent="+encodeURIComponent(nm)):"");
-      window.open(url,"_blank");
+      fetchAgentName(function(nm){
+        var url="/returns/team-requests"+(nm?("?agent="+encodeURIComponent(nm)):"");
+        window.open(url,"_blank");
+      });
     }));
 
     head.onclick=function(e){
@@ -281,6 +285,7 @@
   function tryInject(n){if(injectNav())return;if(n>0)setTimeout(function(){tryInject(n-1)},400)}
   function start(){
     tryInject(15);
+    try{ fetchAgentName(function(){}); }catch(e){}  // warm the name cache early
     var last=location.href;
     new MutationObserver(function(){
       if(location.href!==last){last=location.href;setTimeout(function(){tryInject(10)},500)}

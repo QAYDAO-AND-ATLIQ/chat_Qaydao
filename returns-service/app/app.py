@@ -630,20 +630,11 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
 var API="/returns/api/team-requests";
 var EMAIL="financial@qaydao.com";
 (function(){
-  var PHRASES=[
-    "ابتسامتك هي قوتك وأداؤك هو نجاحك",
-    "كل رد منك يصنع فرقاً لدى عميل",
-    "احترافيتك اليوم سمعة QAYDAO غداً",
-    "أنت خط الدفاع الأول عن رضا عملائنا",
-    "جهدك ملحوظ وأثره باقٍ — استمر",
-    "الاهتمام بالتفاصيل هو ما يميّزك",
-    "عميل سعيد اليوم بفضل تعبك — شكراً لك"
-  ];
   function param(n){try{return new URLSearchParams(location.search).get(n)||""}catch(e){return ""}}
   function firstName(f){f=(f||"").trim();return f?f.split(/\s+/)[0]:""}
   function esc0(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
   var nm=firstName(param("agent"));
-  var phrase=PHRASES[new Date().getDate()%PHRASES.length];
+  var phrase="ابتسامتك هي قوتك وأداؤك هو نجاحك";
   var box=document.getElementById("motiv");
   if(box){
     box.innerHTML=(nm?('<div class="mn">\u2728 '+esc0(nm)+'</div>'):'<div class="mn">\u2728 أهلاً بك</div>')+
