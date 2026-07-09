@@ -60,21 +60,126 @@ async def stats():
     }
 
 
+# ---------------------------------------------------------------------------
+# Export shaping - clean Arabic report (essential columns only).
+# Applied identically to CSV + Excel so files stay simple, ordered, Arabic,
+# with no raw/technical/random columns.
+# ---------------------------------------------------------------------------
+
+_EXPORT_SQL = """
+SELECT created_at, employee_name, conversation_id, alert_type, severity,
+       is_repeated, ai_reason, suggested_correction, repeated_count,
+       supervisor_status, matched_rule
+FROM qg_alerts
+ORDER BY created_at DESC
+LIMIT 5000
+"""
+
+_EXPORT_HEADERS = [
+    "\u0627\u0644\u062a\u0627\u0631\u064a\u062e",                                  # التاريخ
+    "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0638\u0641",                        # اسم الموظف
+    "\u0631\u0642\u0645 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629",              # رقم المحادثة
+    "\u0646\u0648\u0639 \u0627\u0644\u062a\u0646\u0628\u064a\u0647",                    # نوع التنبيه
+    "\u0627\u0644\u062e\u0637\u0648\u0631\u0629",                                  # الخطورة
+    "\u0627\u0644\u062a\u0643\u0631\u0627\u0631",                                  # التكرار
+    "\u0627\u0644\u0633\u0628\u0628",                                        # السبب
+    "\u0627\u0644\u0645\u0642\u062a\u0631\u062d",                                  # المقترح
+    "\u0639\u062f\u062f \u0627\u0644\u062a\u0643\u0631\u0627\u0631 \u062e\u0644\u0627\u0644 \u0623\u0633\u0628\u0648\u0639",  # عدد التكرار خلال أسبوع
+    "\u062d\u0627\u0644\u0629 \u0627\u0644\u0645\u0634\u0631\u0641 (\u0627\u0644\u062a\u0646\u0628\u064a\u0647 \u0644\u0644\u0645\u0648\u0638\u0641)",  # حالة المشرف
+    "\u062a\u0635\u0639\u064a\u062f \u062a\u0644\u0642\u0627\u0626\u064a",              # تصعيد تلقائي
+]
+
+_ALERT_TYPE_AR = {
+    "first_response_delay":     "\u062a\u0623\u062e\u0651\u0631 \u0627\u0644\u0631\u062f \u0627\u0644\u0623\u0648\u0644",
+    "missing_rating_close":     "\u0625\u063a\u0644\u0627\u0642 \u0628\u062f\u0648\u0646 \u062a\u0642\u064a\u064a\u0645",
+    "reply_without_assignment": "\u0631\u062f \u0628\u062f\u0648\u0646 \u062a\u0648\u0643\u064a\u0644",
+    "missing_greeting":         "\u063a\u064a\u0627\u0628 \u0627\u0644\u062a\u062d\u064a\u0629",
+    "customer_abuse":           "\u0625\u0633\u0627\u0621\u0629 \u0645\u0646 \u0627\u0644\u0639\u0645\u064a\u0644",
+    "abuse":                    "\u0625\u0633\u0627\u0621\u0629 \u0645\u0646 \u0627\u0644\u0639\u0645\u064a\u0644",
+    "excessive_internal_notes": "\u0645\u0644\u0627\u062d\u0638\u0627\u062a \u062f\u0627\u062e\u0644\u064a\u0629 \u0645\u0641\u0631\u0637\u0629",
+    "unprofessional_note":      "\u0645\u0644\u0627\u062d\u0638\u0629 \u063a\u064a\u0631 \u0627\u062d\u062a\u0631\u0627\u0641\u064a\u0629",
+    "unprofessional_reply":     "\u0631\u062f \u063a\u064a\u0631 \u0627\u062d\u062a\u0631\u0627\u0641\u064a",
+}
+_SEVERITY_AR = {
+    "high":   "\u0639\u0627\u0644\u064a\u0629",
+    "medium": "\u0645\u062a\u0648\u0633\u0637\u0629",
+    "low":    "\u0645\u0646\u062e\u0641\u0636\u0629",
+}
+_REPEAT_YES = "\u0645\u0643\u0631\u0631"
+_REPEAT_NO  = "\u063a\u064a\u0631 \u0645\u0643\u0631\u0631"
+_SUP_DONE   = "\u062a\u0645 \u062a\u0646\u0628\u064a\u0647 \u0627\u0644\u0645\u0648\u0638\u0641"
+_SUP_NOT    = "\u0644\u0645 \u064a\u062a\u0645 \u062a\u0646\u0628\u064a\u0647 \u0627\u0644\u0645\u0648\u0638\u0641"
+_ESC_YES    = "\u062a\u0645 \u0627\u0644\u062a\u0635\u0639\u064a\u062f"
+_ESC_NO     = "\u0644\u0627"
+
+
+def _fmt_date(dt):
+    if dt is None:
+        return ""
+    try:
+        riyadh = dt + datetime.timedelta(hours=3)  # UTC -> KSA (no DST)
+        return riyadh.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return str(dt)
+
+
+def _shape_row(r):
+    alert_ar = _ALERT_TYPE_AR.get(r["alert_type"], r["alert_type"] or "")
+    sev_ar   = _SEVERITY_AR.get(r["severity"], r["severity"] or "")
+    repeat_ar = _REPEAT_YES if r["is_repeated"] else _REPEAT_NO
+    sup_ar   = _SUP_DONE if r["supervisor_status"] == "reviewed" else _SUP_NOT
+    escalated = ("auto_escalated" in (r["matched_rule"] or ""))
+    esc_ar   = _ESC_YES if escalated else _ESC_NO
+    return [
+        _fmt_date(r["created_at"]),
+        r["employee_name"] or "",
+        r["conversation_id"],
+        alert_ar,
+        sev_ar,
+        repeat_ar,
+        (r["ai_reason"] or "").strip(),
+        (r["suggested_correction"] or "").strip(),
+        r["repeated_count"] if r["repeated_count"] is not None else "",
+        sup_ar,
+        esc_ar,
+    ]
+
+
 @router.get("/report.xlsx")
 async def report_xlsx():
     p = await _pool()
     async with p.acquire() as c:
-        rows = await c.fetch("SELECT * FROM qg_alerts ORDER BY created_at DESC LIMIT 5000")
+        rows = await c.fetch(_EXPORT_SQL)
     try:
         from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill
+        from openpyxl.utils import get_column_letter
     except ImportError:
         return Response(content="openpyxl not installed", status_code=500)
-    wb = Workbook(); ws = wb.active; ws.title = "Quality Guard"
-    if rows:
-        headers = list(rows[0].keys())
-        ws.append(headers)
-        for r in rows:
-            ws.append([("" if r[h] is None else str(r[h])) for h in headers])
+
+    wb = Workbook(); ws = wb.active; ws.title = "\u062a\u0642\u0631\u064a\u0631 \u0627\u0644\u062c\u0648\u062f\u0629"
+    ws.sheet_view.rightToLeft = True
+
+    ws.append(_EXPORT_HEADERS)
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="2E7D32")
+    hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for cell in ws[1]:
+        cell.font = hdr_font; cell.fill = hdr_fill; cell.alignment = hdr_align
+
+    for r in rows:
+        ws.append(_shape_row(r))
+
+    ws.freeze_panes = "A2"
+    body_align = Alignment(vertical="top", wrap_text=True)
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = body_align
+
+    widths = [17, 14, 12, 18, 10, 10, 40, 40, 12, 18, 14]
+    for idx, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = w
+
     bio = io.BytesIO(); wb.save(bio); bio.seek(0)
     return Response(content=bio.read(),
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -111,14 +216,15 @@ async def report_csv():
     import csv as _csv
     p = await _pool()
     async with p.acquire() as c:
-        rows = await c.fetch("SELECT * FROM qg_alerts ORDER BY created_at DESC LIMIT 5000")
+        rows = await c.fetch(_EXPORT_SQL)
     buf = io.StringIO()
-    if rows:
-        w = _csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        for r in rows:
-            w.writerow({k: ("" if v is None else v) for k, v in dict(r).items()})
-    return Response(content=buf.getvalue(), media_type="text/csv",
+    buf.write("\ufeff")  # UTF-8 BOM so Excel opens Arabic correctly
+    w = _csv.writer(buf)
+    w.writerow(_EXPORT_HEADERS)
+    for r in rows:
+        w.writerow(_shape_row(r))
+    return Response(content=buf.getvalue(),
+                    media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": "attachment; filename=quality_guard.csv"})
 
 

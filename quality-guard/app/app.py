@@ -619,14 +619,6 @@ async def _supervisor_status_moved():
 
 @app.get("/report.csv")
 async def report_csv():
-    p = await pool()
-    async with p.acquire() as c:
-        rows = await c.fetch("SELECT * FROM qg_alerts ORDER BY created_at DESC LIMIT 5000")
-    buf = io.StringIO()
-    if rows:
-        w = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        for r in rows:
-            w.writerow({k: ("" if v is None else v) for k, v in dict(r).items()})
-    return Response(content=buf.getvalue(), media_type="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=quality_guard.csv"})
+    # Delegate to the clean Arabic export in report_ui (single source of truth).
+    # Kept for backward-compat with the root path; the UI uses /quality-guard/report.csv.
+    return await report_ui.report_csv()
