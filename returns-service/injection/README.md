@@ -34,10 +34,24 @@ cp returns-service/injection/qaydao-returns-tab.js /var/www/qaydao-injection/
 #    (before the main `location / {`), plus append the returns-tab script to the sub_filter line.
 nginx -t && systemctl reload nginx
 
-# 3. create the accountant basic-auth user
-htpasswd -cB /etc/nginx/.htpasswd-accountant-returns financial@qaydao.com
-# add the admin monitoring account (same page, view/monitor):
-htpasswd -B /etc/nginx/.htpasswd-accountant-returns rami@qaydao.com
+# 3. accountant login is now SESSION-BASED (not nginx basic-auth).
+#    Users live in the `accountant_users` table (bcrypt passwords). Seed them with:
+#    docker exec returns_service python3 -c "..."  (bcrypt hash + INSERT) — see below.
+#    Login page: /accountant-login  ·  Logout: /accountant-logout
+#    Cookie 'returns_session' (httponly, secure); "تذكرني" = 30 days, else 1 day.
+```
+
+## Seeding an accountant user
+
+```bash
+docker exec -e EM='financial@qaydao.com' -e PW='<password>' returns_service python3 -c "
+import os,asyncio,asyncpg,bcrypt
+async def m():
+    c=await asyncpg.connect(os.environ['DATABASE_URL'])
+    h=bcrypt.hashpw(os.environ['PW'].encode(),bcrypt.gensalt()).decode()
+    await c.execute('INSERT INTO accountant_users(email,password_hash,display_name) VALUES(\$1,\$2,\$3) ON CONFLICT(email) DO UPDATE SET password_hash=EXCLUDED.password_hash', os.environ['EM'], h, 'المحاسبة')
+    await c.close()
+asyncio.run(m())"
 ```
 
 > ⚠ Re-check the injected script after every Chatwoot upgrade (same as all `qaydao-*.js`).

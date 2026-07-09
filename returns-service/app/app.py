@@ -16,11 +16,13 @@ by nginx basic-auth in front of this service. This service trusts the reverse pr
 import os
 import json
 import uuid
+import secrets
 import asyncpg
+import bcrypt
 from pathlib import Path
-from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
-from fastapi.responses import JSONResponse, HTMLResponse, Response, FileResponse
+from datetime import datetime, timezone, timedelta
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, Cookie
+from fastapi.responses import JSONResponse, HTMLResponse, Response, FileResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -33,6 +35,9 @@ ALLOWED_MIME = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
+SESSION_COOKIE = "returns_session"
+SESSION_DAYS_DEFAULT = 1      # normal login
+SESSION_DAYS_REMEMBER = 30    # "تذكرني"
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 app = FastAPI(title="QAYDAO Returns Service")
@@ -63,9 +68,54 @@ async def _startup():
             p = await pool()
             async with p.acquire() as c:
                 await c.execute("SELECT 1")
+                await _ensure_auth_tables(c)
             return
         except Exception:
             await asyncio.sleep(1)
+
+
+async def _ensure_auth_tables(c):
+    await c.execute("""
+        CREATE TABLE IF NOT EXISTS accountant_users (
+            email TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
+            display_name TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+        CREATE TABLE IF NOT EXISTS accountant_sessions (
+            token TEXT PRIMARY KEY,
+            email TEXT NOT NULL REFERENCES accountant_users(email) ON DELETE CASCADE,
+            expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+        CREATE INDEX IF NOT EXISTS idx_sess_expires ON accountant_sessions(expires_at);
+    """)
+    # opportunistic cleanup of expired sessions
+    await c.execute("DELETE FROM accountant_sessions WHERE expires_at < now()")
+
+
+# ------------------------------- Auth helpers -------------------------------
+
+def _hash_pw(pw: str) -> str:
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+
+def _check_pw(pw: str, h: str) -> bool:
+    try:
+        return bcrypt.checkpw(pw.encode(), h.encode())
+    except Exception:
+        return False
+
+async def current_user(token: Optional[str]) -> Optional[dict]:
+    if not token:
+        return None
+    p = await pool()
+    async with p.acquire() as c:
+        r = await c.fetchrow(
+            """SELECT s.email, u.display_name FROM accountant_sessions s
+                 JOIN accountant_users u ON u.email = s.email
+                WHERE s.token=$1 AND s.expires_at > now()""",
+            token,
+        )
+    return dict(r) if r else None
+
+def _require_login_redirect():
+    # for HTML pages: send to login
+    return RedirectResponse(url="/accountant-login", status_code=302)
 
 
 def row_to_dict(r) -> dict:
@@ -170,15 +220,19 @@ async def create_or_update(body: ReturnIn):
 
 
 @app.get("/returns/api/requests")
-async def list_requests(conversation_id: Optional[int] = None):
+async def list_requests(conversation_id: Optional[int] = None, returns_session: Optional[str] = Cookie(None)):
     p = await pool()
     async with p.acquire() as c:
         if conversation_id is not None:
+            # single-conversation lookup (used by the CS tab inside Chatwoot to prefill) — open
             r = await c.fetchrow(
                 "SELECT * FROM return_requests WHERE conversation_id=$1 ORDER BY id DESC LIMIT 1",
                 conversation_id,
             )
             return row_to_dict(r) if r else JSONResponse(None)
+        # full list (bank data) — accountant login required
+        if not await current_user(returns_session):
+            raise HTTPException(401, "login required")
         rows = await c.fetch("SELECT * FROM return_requests ORDER BY id DESC LIMIT 2000")
         return [row_to_dict(r) for r in rows]
 
@@ -194,7 +248,10 @@ async def get_request(rid: int):
 
 
 @app.patch("/returns/api/requests/{rid}/status")
-async def set_status(rid: int, body: StatusIn):
+async def set_status(rid: int, body: StatusIn, returns_session: Optional[str] = Cookie(None)):
+    user = await current_user(returns_session)
+    if not user:
+        raise HTTPException(401, "login required")
     if body.status not in ("will", "doing", "done", "rejected"):
         raise HTTPException(400, "invalid status")
     if body.status == "rejected" and not (body.reject_reason or "").strip():
@@ -211,7 +268,7 @@ async def set_status(rid: int, body: StatusIn):
         entry = {
             "status": body.status,
             "label": STATUS_LABELS[body.status],
-            "by": body.changed_by or "financial@qaydao.com",
+            "by": user.get("email") or body.changed_by or "financial@qaydao.com",
             "at": datetime.now(timezone.utc).isoformat(),
         }
         if body.accountant_note is not None and body.accountant_note.strip():
@@ -232,10 +289,48 @@ async def set_status(rid: int, body: StatusIn):
     return row_to_dict(out)
 
 
-# ------------------------- Accountant page -------------------------
+# ------------------------- Login + Accountant page -------------------------
+
+@app.get("/accountant-login", response_class=HTMLResponse)
+async def login_page(returns_session: Optional[str] = Cookie(None)):
+    if await current_user(returns_session):
+        return RedirectResponse(url="/accountant-returns", status_code=302)
+    return HTMLResponse(LOGIN_HTML)
+
+
+@app.post("/accountant-login")
+async def login_submit(email: str = Form(...), password: str = Form(...), remember: Optional[str] = Form(None)):
+    email = (email or "").strip().lower()
+    p = await pool()
+    async with p.acquire() as c:
+        u = await c.fetchrow("SELECT email, password_hash FROM accountant_users WHERE email=$1", email)
+        if not u or not _check_pw(password, u["password_hash"]):
+            return JSONResponse({"ok": False, "error": "البريد الإلكتروني أو كلمة المرور غير صحيحة"}, status_code=401)
+        days = SESSION_DAYS_REMEMBER if remember else SESSION_DAYS_DEFAULT
+        token = secrets.token_urlsafe(32)
+        exp = datetime.now(timezone.utc) + timedelta(days=days)
+        await c.execute("INSERT INTO accountant_sessions(token, email, expires_at) VALUES ($1,$2,$3)", token, email, exp)
+    resp = JSONResponse({"ok": True, "redirect": "/accountant-returns"})
+    resp.set_cookie(SESSION_COOKIE, token, max_age=days * 86400, httponly=True,
+                    secure=True, samesite="lax", path="/")
+    return resp
+
+
+@app.get("/accountant-logout")
+async def logout(returns_session: Optional[str] = Cookie(None)):
+    if returns_session:
+        p = await pool()
+        async with p.acquire() as c:
+            await c.execute("DELETE FROM accountant_sessions WHERE token=$1", returns_session)
+    resp = RedirectResponse(url="/accountant-login", status_code=302)
+    resp.delete_cookie(SESSION_COOKIE, path="/")
+    return resp
+
 
 @app.get("/accountant-returns", response_class=HTMLResponse)
-async def accountant_page():
+async def accountant_page(returns_session: Optional[str] = Cookie(None)):
+    if not await current_user(returns_session):
+        return _require_login_redirect()
     return HTMLResponse(ACCOUNTANT_HTML)
 
 
@@ -277,7 +372,9 @@ async def upload_attachment(rid: int, file: UploadFile = File(...)):
 
 
 @app.get("/returns/api/requests/{rid}/attachment")
-async def download_attachment(rid: int):
+async def download_attachment(rid: int, returns_session: Optional[str] = Cookie(None)):
+    if not await current_user(returns_session):
+        raise HTTPException(401, "login required")
     p = await pool()
     async with p.acquire() as c:
         r = await c.fetchrow(
@@ -301,6 +398,78 @@ async def config():
     return {"reasons": REASONS, "assignees": ASSIGNEES, "status_labels": STATUS_LABELS}
 
 
+LOGIN_HTML = r"""<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>تسجيل الدخول — المرجعات — QAYDAO</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--brand:#1f5f5b;--brandink:#12403d;--ink:#1f2b3a;--soft:#5a6b7d;--line:#e4e9ee;--bg:#eef2f4}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Cairo,system-ui,sans-serif;background:linear-gradient(135deg,#eef2f4,#e4efee);min-height:100vh;display:grid;place-items:center;padding:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:0 10px 40px rgba(31,43,58,.12);width:100%;max-width:400px;overflow:hidden}
+.top{background:var(--brand);color:#fff;padding:28px 26px;text-align:center}
+.logo{width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-weight:800;font-size:24px;margin:0 auto 12px}
+.top h1{font-size:19px;font-weight:800}
+.top p{font-size:12.5px;opacity:.9;margin-top:4px}
+.body{padding:26px 26px 28px}
+.f{margin-bottom:16px}
+label{display:block;font-size:13px;font-weight:600;color:var(--soft);margin-bottom:6px}
+input[type=email],input[type=password]{width:100%;font-family:inherit;font-size:14.5px;color:var(--ink);background:#f8fafb;border:1px solid var(--line);border-radius:11px;padding:12px 14px;transition:.15s}
+input:focus{outline:none;border-color:var(--brand);background:#fff}
+.remember{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--soft);cursor:pointer;margin-bottom:18px}
+.remember input{width:17px;height:17px;accent-color:var(--brand);cursor:pointer}
+.btn{width:100%;background:var(--brand);color:#fff;border:none;border-radius:12px;padding:13px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;transition:.15s}
+.btn:hover{background:var(--brandink)}
+.btn:disabled{opacity:.6;cursor:default}
+.err{background:#fdeded;color:#c0392b;border:1px solid #f3c6c1;border-radius:10px;padding:10px 13px;font-size:13px;font-weight:600;margin-bottom:16px;display:none}
+.err.show{display:block}
+.foot{text-align:center;font-size:11.5px;color:var(--soft);margin-top:18px}
+</style></head><body>
+<div class="card">
+  <div class="top">
+    <div class="logo">Q</div>
+    <h1>إدارة المرجعات</h1>
+    <p>تسجيل دخول المحاسبة والإدارة</p>
+  </div>
+  <div class="body">
+    <div class="err" id="err"></div>
+    <div class="f"><label>البريد الإلكتروني</label>
+      <input type="email" id="email" dir="ltr" style="text-align:right" placeholder="financial@qaydao.com" autocomplete="username"></div>
+    <div class="f"><label>كلمة المرور</label>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password"></div>
+    <label class="remember"><input type="checkbox" id="remember"> تذكّرني على هذا الجهاز</label>
+    <button class="btn" id="btn" onclick="doLogin()">تسجيل الدخول</button>
+    <div class="foot">QAYDAO · دخول آمن — البيانات البنكية محمية</div>
+  </div>
+</div>
+<script>
+var e=document.getElementById("email"),p=document.getElementById("password"),
+    r=document.getElementById("remember"),b=document.getElementById("btn"),er=document.getElementById("err");
+try{var saved=localStorage.getItem("qd_ret_email");if(saved){e.value=saved;r.checked=true;p.focus()}else{e.focus()}}catch(x){}
+function showErr(m){er.textContent=m;er.classList.add("show")}
+function doLogin(){
+  er.classList.remove("show");
+  var em=e.value.trim(),pw=p.value;
+  if(!em||!pw){showErr("يرجى إدخال البريد وكلمة المرور");return}
+  b.disabled=true;b.textContent="جارٍ الدخول…";
+  var fd=new URLSearchParams();fd.append("email",em);fd.append("password",pw);if(r.checked)fd.append("remember","1");
+  fetch("/accountant-login",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:fd.toString(),credentials:"same-origin"})
+    .then(function(res){return res.json().then(function(d){return {ok:res.ok,d:d}})})
+    .then(function(o){
+      if(o.ok&&o.d.ok){
+        try{if(r.checked)localStorage.setItem("qd_ret_email",em);else localStorage.removeItem("qd_ret_email")}catch(x){}
+        location.href=o.d.redirect||"/accountant-returns";
+      }else{showErr((o.d&&o.d.error)||"تعذّر تسجيل الدخول");b.disabled=false;b.textContent="تسجيل الدخول"}
+    })
+    .catch(function(){showErr("خطأ في الاتصال، حاول مجدداً");b.disabled=false;b.textContent="تسجيل الدخول"});
+}
+p.addEventListener("keydown",function(ev){if(ev.key==="Enter")doLogin()});
+e.addEventListener("keydown",function(ev){if(ev.key==="Enter")p.focus()});
+</script></body></html>"""
+
+
 ACCOUNTANT_HTML = r"""<!DOCTYPE html>
 <html lang="ar" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -321,6 +490,8 @@ header{background:var(--surface);border-bottom:1px solid var(--line);padding:20p
 h1{font-size:20px;font-weight:800}
 header p{font-size:13px;color:var(--soft);margin-top:2px}
 .motiv-acc{margin-inline-start:auto;max-width:280px;font-size:12.5px;font-weight:600;color:var(--brand);background:linear-gradient(135deg,var(--brandsoft),#f3f9f8);border:1px solid #d5e6e4;border-radius:12px;padding:10px 14px;line-height:1.5}
+.logout-btn{font-family:inherit;font-size:12.5px;font-weight:700;color:#c0392b;background:#fdeded;border:1px solid #f3c6c1;border-radius:10px;padding:8px 14px;text-decoration:none;white-space:nowrap}
+.logout-btn:hover{background:#fbdddd}
 .pill{margin-inline-start:auto;background:var(--oksoft);color:var(--ok);border:1px solid #bfe3cd;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700}
 .tools{display:flex;gap:10px;align-items:center;margin:18px 0;flex-wrap:wrap}
 .tools select,.tools input{font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
@@ -382,6 +553,7 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
   <div><h1>إدارة المرجعات — المحاسبة</h1><p>عرض طلبات الإرجاع الواردة من خدمة العملاء وتحديث حالتها.</p></div>
   <div class="motiv-acc">✨ دقّتك في المراجعة تحمي حقوق العملاء والمتجر — شكراً لك</div>
   <span class="pill" id="live">● متصل</span>
+  <a href="/accountant-logout" class="logout-btn">خروج</a>
 </div></header>
 <div class="wrap">
   <div class="tabs" id="tabs">
@@ -407,7 +579,7 @@ var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرج
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function toast(m){var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},2200)}
 function copy(v,btn){navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textContent="تم ✓";btn.classList.add("ok");setTimeout(function(){btn.textContent=o;btn.classList.remove("ok")},1400)})}
-function load(){fetch(API).then(function(r){return r.json()}).then(function(d){DATA=Array.isArray(d)?d:[];render()}).catch(function(){document.getElementById("live").textContent="● غير متصل";document.getElementById("live").style.color="#c0392b"})}
+function load(){fetch(API,{credentials:"same-origin"}).then(function(r){if(r.status===401){location.href="/accountant-login";return null}return r.json()}).then(function(d){if(d===null)return;DATA=Array.isArray(d)?d:[];render()}).catch(function(){document.getElementById("live").textContent="● غير متصل";document.getElementById("live").style.color="#c0392b"})}
 var CURTAB="active";
 function setTab(t,btn){
   CURTAB=t;
@@ -502,7 +674,7 @@ function setStatus(id,st,btn,rejectReason){
   btn.disabled=true;
   var payload={status:st,changed_by:"financial@qaydao.com"};
   if(st==="rejected")payload.reject_reason=rejectReason||"";
-  fetch(API+"/"+id+"/status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+  fetch(API+"/"+id+"/status",{method:"PATCH",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
     .then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||0}});return r.json()})
     .then(function(u){
       var msg;

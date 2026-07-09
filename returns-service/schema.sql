@@ -39,3 +39,18 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_touch_return ON return_requests;
 CREATE TRIGGER trg_touch_return BEFORE UPDATE ON return_requests
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- Accountant login (session-based auth; replaces nginx basic-auth)
+CREATE TABLE IF NOT EXISTS accountant_users (
+    email         TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    display_name  TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS accountant_sessions (
+    token       TEXT PRIMARY KEY,
+    email       TEXT NOT NULL REFERENCES accountant_users(email) ON DELETE CASCADE,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sess_expires ON accountant_sessions(expires_at);
