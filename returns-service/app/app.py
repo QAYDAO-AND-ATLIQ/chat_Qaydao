@@ -44,7 +44,7 @@ REASONS = [
     "نقص في الطلب", "سبب آخر",
 ]
 ASSIGNEES = ["في", "مروة", "أميرة"]
-STATUS_LABELS = {"new": "جديد", "will": "سيتم الإرجاع", "doing": "جاري الإرجاع", "done": "تم الإرجاع"}
+STATUS_LABELS = {"new": "جديد", "will": "سيتم الإرجاع", "doing": "جاري الإرجاع", "done": "تم الإرجاع", "rejected": "مرفوض"}
 
 
 async def pool() -> asyncpg.Pool:
@@ -104,6 +104,8 @@ class ReturnIn(BaseModel):
 class StatusIn(BaseModel):
     status: str
     changed_by: Optional[str] = None
+    accountant_note: Optional[str] = None
+    reject_reason: Optional[str] = None
 
 
 # ------------------------------- API -------------------------------
@@ -193,8 +195,10 @@ async def get_request(rid: int):
 
 @app.patch("/returns/api/requests/{rid}/status")
 async def set_status(rid: int, body: StatusIn):
-    if body.status not in ("will", "doing", "done"):
+    if body.status not in ("will", "doing", "done", "rejected"):
         raise HTTPException(400, "invalid status")
+    if body.status == "rejected" and not (body.reject_reason or "").strip():
+        raise HTTPException(400, "سبب الرفض مطلوب عند اختيار مرفوض")
     p = await pool()
     async with p.acquire() as c:
         r = await c.fetchrow("SELECT status_history FROM return_requests WHERE id=$1", rid)
@@ -204,15 +208,26 @@ async def set_status(rid: int, body: StatusIn):
         if isinstance(hist, str):
             hist = json.loads(hist)
         hist = list(hist or [])
-        hist.append({
+        entry = {
             "status": body.status,
             "label": STATUS_LABELS[body.status],
             "by": body.changed_by or "financial@qaydao.com",
             "at": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+        if body.accountant_note is not None and body.accountant_note.strip():
+            entry["note"] = body.accountant_note.strip()
+        if body.status == "rejected":
+            entry["reject_reason"] = body.reject_reason.strip()
+        hist.append(entry)
+        note_val = body.accountant_note.strip() if (body.accountant_note and body.accountant_note.strip()) else None
+        reject_val = body.reject_reason.strip() if body.status == "rejected" else None
         out = await c.fetchrow(
-            "UPDATE return_requests SET status=$2, status_history=$3::jsonb WHERE id=$1 RETURNING *",
-            rid, body.status, json.dumps(hist),
+            """UPDATE return_requests
+                 SET status=$2, status_history=$3::jsonb,
+                     accountant_note=COALESCE($4, accountant_note),
+                     reject_reason=CASE WHEN $2='rejected' THEN $5 ELSE reject_reason END
+               WHERE id=$1 RETURNING *""",
+            rid, body.status, json.dumps(hist), note_val, reject_val,
         )
     return row_to_dict(out)
 
@@ -319,6 +334,7 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .st.will{background:var(--ambersoft);color:var(--amber)}
 .st.doing{background:var(--infosoft);color:var(--info)}
 .st.done{background:var(--oksoft);color:var(--ok)}
+.st.rejected{background:#fdeded;color:#c0392b}
 .cbody{padding:14px 16px}
 .rowf{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px dashed #eef1f4}
 .rowf:last-of-type{border-bottom:none}
@@ -328,13 +344,20 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .cbtn{background:var(--brandsoft);color:var(--brandink);border:1px solid #cfe3e1;border-radius:7px;padding:2px 8px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer}
 .cbtn.ok{background:var(--oksoft);color:var(--ok);border-color:#bfe3cd}
 .olink{color:var(--brand);font-weight:700;text-decoration:none;border-bottom:1px dashed var(--brand)}
-.sbtns{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px}
+.sbtns{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:12px}
 .sbtn{font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;border-radius:9px;padding:9px 4px;border:1.5px solid transparent;transition:.15s}
 .sbtn.will{background:var(--ambersoft);color:var(--amber);border-color:#eddcae}
 .sbtn.doing{background:var(--infosoft);color:var(--info);border-color:var(--infoline)}
 .sbtn.done{background:var(--oksoft);color:var(--ok);border-color:#c5dddb}
+.sbtn.rejected{background:#fdeded;color:#c0392b;border-color:#f3c6c1}
 .sbtn:hover{transform:translateY(-1px)}
 .sbtn.active{box-shadow:0 0 0 3px rgba(31,95,91,.14)}
+.qd-note-in{width:100%;font-family:inherit;font-size:12.5px;color:#1f2b3a;background:#f8fafb;border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin-top:10px;resize:vertical}
+.qd-note-in:focus{outline:none;border-color:var(--brand);background:#fff}
+.qd-note-lbl{font-size:11.5px;font-weight:600;color:var(--soft);margin-top:11px;margin-bottom:2px}
+.qd-reject-wrap{display:none;margin-top:8px}
+.qd-reject-wrap.show{display:block}
+.qd-reject-wrap textarea{border-color:#f3c6c1;background:#fdeded}
 .hist{margin-top:11px;font-size:11.5px;color:var(--soft);background:#f8fafb;border-radius:9px;padding:9px 11px;display:none}
 .hist.show{display:block}
 .hist b{color:var(--ink)}
@@ -370,7 +393,7 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
 <script>
 var API="/returns/api/requests";
 var DATA=[];
-var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع"};
+var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض"};
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function toast(m){var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},2200)}
 function copy(v,btn){navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textContent="تم ✓";btn.classList.add("ok");setTimeout(function(){btn.textContent=o;btn.classList.remove("ok")},1400)})}
@@ -408,26 +431,195 @@ function card(x){
       '<div class="rowf"><span class="k">ملف الحساب البنكي</span><span class="v">'+
         (x.attachment_name?('<a class="olink" href="/returns/api/requests/'+x.id+'/attachment" target="_blank">\u2B07 '+esc(x.attachment_name)+'</a>'):'—')+
       '</span></div>'+
+      (x.reject_reason?('<div class="rowf"><span class="k" style="color:#c0392b">سبب الرفض</span><span class="v" style="color:#c0392b">'+esc(x.reject_reason)+'</span></div>'):'')+
+      '<div class="qd-note-lbl">ملاحظة للموظف (اختياري)</div>'+
+      '<textarea class="qd-note-in" id="note_'+x.id+'" rows="2" placeholder="تُرسل للموظف مع الحالة…">'+esc(x.accountant_note||"")+'</textarea>'+
+      '<div class="qd-reject-wrap" id="rejw_'+x.id+'"><div class="qd-note-lbl" style="color:#c0392b">سبب الرفض (إلزامي عند الرفض)</div>'+
+        '<textarea class="qd-note-in" id="rej_'+x.id+'" rows="2" placeholder="اكتب سبب الرفض…">'+esc(x.reject_reason||"")+'</textarea></div>'+
       '<div class="sbtns">'+
         '<button class="sbtn will'+(x.status==="will"?" active":"")+'" onclick="setStatus('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
         '<button class="sbtn doing'+(x.status==="doing"?" active":"")+'" onclick="setStatus('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+
         '<button class="sbtn done'+(x.status==="done"?" active":"")+'" onclick="setStatus('+x.id+',\'done\',this)">تم الإرجاع</button>'+
+        '<button class="sbtn rejected'+(x.status==="rejected"?" active":"")+'" onclick="rejectClick('+x.id+',this)">مرفوض</button>'+
       '</div>'+
       (histRows?'<div class="hist show">'+histRows+'</div>':'')+
     '</div></div>';
 }
 function orderClick(n){toast("رقم الطلب "+n+" — الربط مع سلة سيُفعّل لاحقاً.");return false}
-function setStatus(id,st,btn){
+function noteVal(id){var e=document.getElementById("note_"+id);return e?e.value.trim():""}
+function rejectClick(id,btn){
+  var wrap=document.getElementById("rejw_"+id);
+  var rej=document.getElementById("rej_"+id);
+  if(wrap && !wrap.classList.contains("show")){
+    wrap.classList.add("show");
+    if(rej)rej.focus();
+    toast("اكتب سبب الرفض ثم اضغط \u0022مرفوض\u0022 مرة أخرى للتأكيد.");
+    return;
+  }
+  var reason=rej?rej.value.trim():"";
+  if(!reason){if(rej)rej.focus();toast("سبب الرفض مطلوب قبل التأكيد.");return}
+  setStatus(id,"rejected",btn,reason);
+}
+function setStatus(id,st,btn,rejectReason){
   btn.disabled=true;
-  fetch(API+"/"+id+"/status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:st,changed_by:"financial@qaydao.com"})})
-    .then(function(r){if(!r.ok)throw 0;return r.json()})
+  var payload={status:st,changed_by:"financial@qaydao.com",accountant_note:noteVal(id)};
+  if(st==="rejected")payload.reject_reason=rejectReason||"";
+  fetch(API+"/"+id+"/status",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+    .then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||0}});return r.json()})
     .then(function(u){
-      var msg=st==="done"?"تم إتمام الإرجاع وتسجيل تاريخ ووقت العملية.":"تم تحديث الحالة إلى: "+SL[st]+". المدة المتوقعة للتحويل من ٧ إلى ١٤ يوم.";
+      var msg;
+      if(st==="done")msg="تم إتمام الإرجاع وتسجيل تاريخ ووقت العملية.";
+      else if(st==="rejected")msg="تم رفض الطلب وتسجيل السبب. سيظهر التنبيه للموظف.";
+      else msg="تم تحديث الحالة إلى: "+SL[st]+". المدة المتوقعة للتحويل من ٧ إلى ١٤ يوم.";
       toast(msg);
       var i=DATA.findIndex(function(d){return d.id===id});if(i>=0)DATA[i]=u;
       render();
     })
-    .catch(function(){toast("تعذّر تحديث الحالة، حاول مجدداً.");btn.disabled=false});
+    .catch(function(e){toast((e&&e.msg)||"تعذّر تحديث الحالة، حاول مجدداً.");btn.disabled=false});
+}
+load();
+setInterval(load,20000);
+</script></body></html>"""
+
+
+# ------------------- Team "submitted requests" page -------------------
+# Option B: NO bank account / IBAN columns (reduce spread of banking data).
+
+@app.get("/returns/api/team-requests")
+async def team_requests():
+    p = await pool()
+    async with p.acquire() as c:
+        rows = await c.fetch(
+            """SELECT id, conversation_id, customer_name, order_number, reason,
+                      status, accountant_note, reject_reason, assignee,
+                      return_created_at, updated_at
+                 FROM return_requests ORDER BY id DESC LIMIT 300"""
+        )
+    out = []
+    for r in rows:
+        d = dict(r)
+        for k in ("return_created_at",):
+            if d.get(k) is not None:
+                d[k] = d[k].isoformat()
+        if d.get("updated_at") is not None:
+            d["updated_at"] = d["updated_at"].isoformat()
+        d["status_label"] = STATUS_LABELS.get(d.get("status"), d.get("status"))
+        out.append(d)
+    return out
+
+
+@app.get("/returns/team-requests", response_class=HTMLResponse)
+async def team_page():
+    return HTMLResponse(TEAM_HTML)
+
+
+TEAM_HTML = r"""<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>الطلبات المرفوعة — المرجعات — QAYDAO</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f6f8;--surface:#fff;--ink:#1f2b3a;--soft:#5a6b7d;--line:#e4e9ee;--brand:#1f5f5b;--brandsoft:#e8f1f0;--ok:#1f7a4d;--oksoft:#e6f4ec;--amber:#b5791d;--ambersoft:#fbf0d9;--info:#2c5a86;--infosoft:#eef4fb;--rej:#c0392b;--rejsoft:#fdeded}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Cairo,system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6;padding-bottom:50px}
+.ltr{direction:ltr;unicode-bidi:isolate;display:inline-block}
+.wrap{max-width:1240px;margin:0 auto;padding:0 18px}
+.topbar{background:#12403d;color:#fff;text-align:center;padding:8px;font-size:12.5px;font-weight:600}
+header{background:var(--surface);border-bottom:1px solid var(--line);padding:18px 0}
+.hrow{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+.logo{width:42px;height:42px;border-radius:11px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:18px}
+h1{font-size:19px;font-weight:800}
+header p{font-size:12.5px;color:var(--soft);margin-top:2px}
+.tools{display:flex;gap:10px;align-items:center;margin:16px 0;flex-wrap:wrap}
+.tools select,.tools input{font-family:inherit;font-size:13.5px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.refresh{margin-inline-start:auto;background:var(--brand);color:#fff;border:none;border-radius:10px;padding:8px 15px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
+.count{font-size:12.5px;color:var(--soft)}
+.rejbar{background:var(--rejsoft);border:1px solid #f3c6c1;color:var(--rej);border-radius:12px;padding:12px 15px;margin-bottom:14px;font-size:13px;font-weight:600;display:none}
+.rejbar.show{display:block}
+.rejbar a{color:var(--rej);font-weight:800}
+.tablewrap{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(31,43,58,.04),0 6px 20px rgba(31,43,58,.05)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:11px 12px;text-align:start;border-bottom:1px solid #eef1f4;vertical-align:top}
+th{background:#f8fafb;font-weight:700;color:var(--soft);white-space:nowrap;font-size:12px}
+tr:last-child td{border-bottom:none}
+tr.rejrow{background:var(--rejsoft)}
+.badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.b-new{background:#eef1f4;color:#5a6b7d}.b-will{background:var(--ambersoft);color:var(--amber)}
+.b-doing{background:var(--infosoft);color:var(--info)}.b-done{background:var(--oksoft);color:var(--ok)}
+.b-rejected{background:var(--rejsoft);color:var(--rej)}
+.note{color:var(--ink)}.rej{color:var(--rej);font-weight:700}
+.empty{text-align:center;color:var(--soft);padding:50px 20px;font-size:15px;display:none}
+footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
+@media(max-width:720px){th:nth-child(3),td:nth-child(3){display:none}}
+</style></head><body>
+<div class="topbar">📋 الطلبات المرفوعة — متابعة ردّ المحاسب على طلبات الإرجاع</div>
+<header><div class="wrap hrow">
+  <div class="logo">Q</div>
+  <div><h1>الطلبات المرفوعة للمحاسب</h1><p>تابع حالة كل طلب إرجاع رفعته للمحاسب وردّه عليه — للرد على العميل.</p></div>
+</div></header>
+<div class="wrap">
+  <div id="rejbar" class="rejbar"></div>
+  <div class="tools">
+    <select id="fstatus" onchange="render()">
+      <option value="">كل الحالات</option>
+      <option value="new">جديد</option><option value="will">سيتم الإرجاع</option>
+      <option value="doing">جاري الإرجاع</option><option value="done">تم الإرجاع</option>
+      <option value="rejected">مرفوض</option>
+    </select>
+    <input id="fsearch" placeholder="بحث بالاسم أو رقم المحادثة أو الطلب…" oninput="render()">
+    <span class="count" id="count"></span>
+    <button class="refresh" onclick="load()">تحديث ⟳</button>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th>رقم المحادثة</th><th>العميل</th><th>رقم الطلب</th><th>سبب الإرجاع</th>
+        <th>الحالة</th><th>ملاحظة المحاسب</th><th>سبب الرفض</th><th>الموظف</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="empty">لا توجد طلبات مرفوعة بعد.</div>
+  <footer>QAYDAO · الطلبات المرفوعة · البيانات البنكية غير معروضة هنا لدواعي الخصوصية — تظهر في نموذج الإدخال فقط</footer>
+</div>
+<script>
+var API="/returns/api/team-requests";
+var EMAIL="financial@qaydao.com";
+var DATA=[];
+var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض"};
+function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function load(){fetch(API).then(function(r){return r.json()}).then(function(d){DATA=Array.isArray(d)?d:[];render()}).catch(function(){})}
+function render(){
+  var st=document.getElementById("fstatus").value;
+  var q=document.getElementById("fsearch").value.trim().toLowerCase();
+  var list=DATA.filter(function(x){
+    if(st&&x.status!==st)return false;
+    if(q){var h=((x.customer_name||"")+" "+(x.conversation_id||"")+" "+(x.order_number||"")).toLowerCase();if(h.indexOf(q)<0)return false}
+    return true;
+  });
+  document.getElementById("count").textContent=list.length+" طلب";
+  var rejected=list.filter(function(x){return x.status==="rejected"});
+  var rb=document.getElementById("rejbar");
+  if(rejected.length){rb.classList.add("show");rb.innerHTML="\u26A0 يوجد "+rejected.length+" طلب مرفوض. لمعرفة تفاصيل سبب الرفض تواصل مع المحاسب عبر الإيميل: <a href=\"mailto:"+EMAIL+"\">"+EMAIL+"</a>"}
+  else{rb.classList.remove("show");rb.innerHTML=""}
+  var tb=document.getElementById("tbody"),e=document.getElementById("empty");
+  if(!list.length){tb.innerHTML="";e.style.display="block";return}
+  e.style.display="none";
+  tb.innerHTML=list.map(row).join("");
+}
+function row(x){
+  var rej=x.status==="rejected";
+  return '<tr class="'+(rej?"rejrow":"")+'">'+
+    '<td class="ltr">'+esc(x.conversation_id||"—")+'</td>'+
+    '<td>'+esc(x.customer_name||"—")+'</td>'+
+    '<td class="ltr">'+esc(x.order_number||"—")+'</td>'+
+    '<td>'+esc(x.reason||"—")+'</td>'+
+    '<td><span class="badge b-'+esc(x.status)+'">'+esc(SL[x.status]||x.status)+'</span></td>'+
+    '<td class="note">'+esc(x.accountant_note||"—")+'</td>'+
+    '<td class="'+(rej?"rej":"")+'">'+(rej?(esc(x.reject_reason||"—")+'<br><span style="font-size:11px">\u26A0 تواصل مع المحاسب بالإيميل</span>'):'—')+'</td>'+
+    '<td>'+esc(x.assignee||"—")+'</td>'+
+  '</tr>';
 }
 load();
 setInterval(load,20000);

@@ -19,8 +19,10 @@ CREATE TABLE IF NOT EXISTS return_requests (
     attachment_mime   TEXT,
     assignee          TEXT,
     status            TEXT NOT NULL DEFAULT 'new'
-                      CHECK (status IN ('new','will','doing','done')),
+                      CHECK (status IN ('new','will','doing','done','rejected')),
     status_history    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    accountant_note   TEXT,
+    reject_reason     TEXT,
     created_by        TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
