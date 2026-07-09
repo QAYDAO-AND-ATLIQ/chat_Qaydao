@@ -1,0 +1,39 @@
+# QAYDAO Chatwoot — Returns Service (SIDECAR)
+# Fully isolated. Does NOT touch chatwoot_production, chatwoot_postgres, or any chatwoot_* container.
+# Joins the existing chatwoot_internal network (external) only for parity with other sidecars.
+services:
+  returns_db:
+    image: postgres:16-alpine
+    container_name: returns_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rguard
+      POSTGRES_PASSWORD: ${RETURNS_DB_PASSWORD}
+      POSTGRES_DB: returns
+    volumes:
+      - returns-pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    networks:
+      - chatwoot-internal
+
+  returns_service:
+    build: ./app
+    container_name: returns_service
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    depends_on:
+      - returns_db
+    networks:
+      - chatwoot-internal
+    ports:
+      - "127.0.0.1:8091:8091"
+
+networks:
+  chatwoot-internal:
+    name: chatwoot_internal
+    external: true
+
+volumes:
+  returns-pgdata:
+    name: returns_pgdata
