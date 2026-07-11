@@ -368,6 +368,11 @@ async def _greeting_should_check(conv_id, message_id):
         if row and row["first_message_id"] is not None:
             return False  # already evaluated the first reply for this conversation
     # ask Chatwoot for the conversation's messages
+    # 2026-07-11 FIX (Omar): per_page=100 silently truncated long conversations, so the
+    # real first reply fell outside the window and QG evaluated a MID-CONVERSATION message
+    # instead — demanding a greeting from "العفو عزيزي" or even a closing message.
+    # 44 of 80 remaining missing_greeting alerts were NOT first replies at all.
+    # Fetch the earliest page explicitly (oldest-first) so the true first reply is present.
     url = f"{CHATWOOT_BASE}/api/v1/accounts/{CHATWOOT_ACCOUNT}/conversations/{conv_id}/messages"
     try:
         async with httpx.AsyncClient(timeout=10) as cl:
@@ -376,9 +381,20 @@ async def _greeting_should_check(conv_id, message_id):
         payload = r.json().get("payload", [])
     except Exception:
         return False
+    # sort oldest-first by id: never rely on API ordering when picking "the first" reply
+    payload = sorted(payload, key=lambda m: (m.get("id") or 0))
     customer_msgs = [m for m in payload if m.get("message_type") == 0]
     if not customer_msgs:
         return False  # customer hasn't engaged yet -> outbound opener, don't evaluate
+
+    # GUARD (2026-07-11): if the message we are asked to judge is OLDER than the oldest
+    # message we can see, our window is incomplete and we cannot know what the first reply
+    # was. Never accuse on a partial view — skip and mark evaluated.
+    oldest_seen = payload[0].get("id") if payload else None
+    if oldest_seen is not None and message_id is not None and message_id < oldest_seen:
+        await _record_first_reply(conv_id, message_id)
+        return False
+
     # is THIS message the first human (User) agent outgoing reply in the conversation?
     first_human = None
     for m in payload:
@@ -390,6 +406,9 @@ async def _greeting_should_check(conv_id, message_id):
                 # the approved outreach template is not a service reply -> skip it,
                 # so the first SUBSTANTIVE human reply is the one evaluated for greeting
                 if is_opening_template(m.get("content", "")):
+                    continue
+                # authoritative template flag (Facebook/WhatsApp sends are not CS replies)
+                if is_template_message(m):
                     continue
                 first_human = m
                 break
