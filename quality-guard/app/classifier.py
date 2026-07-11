@@ -127,9 +127,20 @@ SAFE_OVERRIDES = _norm_list([
 QUOTE_MARKERS = _norm_list(["العميل قال", "العميله قالت", "قال العميل", "قالت العميله"])
 
 # ---------- greeting / closing / rating (sections 6,7,8) ----------
-GREET_HELLO = _norm_list(["اهلا","مرحبا","حياك الله","اسعد الله","السلام عليكم","هلا"])
-GREET_SELF  = _norm_list(["معك","انا","اسمي"])
-GREET_BRAND = _norm_list(["كواي داو","خدمه عملاء","خدمة عملاء","فريق كواي"])
+# 2026-07-11 FIX (Omar): "وعليكم السلام" — the standard Arabic RESPONSE to a customer's
+# salaam — was missing. Substring matching meant it never matched "السلام عليكم", so every
+# agent who politely returned the greeting was flagged missing_greeting (conv 4616/166/1440/24).
+# The system was literally penalising politeness. Expanded to cover response + common variants.
+GREET_HELLO = _norm_list([
+    # responses to a customer-initiated salaam (were entirely absent)
+    "وعليكم السلام","و عليكم السلام","عليكم السلام","وعليكم",
+    # initiations
+    "السلام عليكم","اهلا","اهلين","أهلا وسهلا","اهلا وسهلا","مرحبا","مرحبتين",
+    "حياك الله","حياك","حياكم الله","اسعد الله","صباح الخير","مساء الخير",
+    "هلا","هلا وغلا","يا هلا","يهلا",
+])
+GREET_SELF  = _norm_list(["معك","انا","اسمي","معاك"])
+GREET_BRAND = _norm_list(["كواي داو","خدمه عملاء","خدمة عملاء","فريق كواي","قيداو","qaydao"])
 
 CLOSING_OK = _norm_list([
     "اي سؤال","استفسار اخر","شي اخر","مساعده اضافيه","تحتاج اي مساعده",
@@ -240,8 +251,43 @@ def is_opening_template(body: str) -> bool:
     return any(m and m in t for m in OPENING_TEMPLATE_MARKERS)
 
 
-def classify_first_reply(body: str):
-    """section 6: first human reply must greet + name + brand. Returns dict or None."""
+# 2026-07-11 FIX (Omar): Chatwoot already flags template messages, but the classifier
+# never looked. It only matched a hardcoded list of 4 Arabic phrases, so ANY new
+# Facebook/WhatsApp template produced a false missing_greeting (conv 4656/4794/4387/
+# 4312/4550/4635). Read the authoritative flag from the message row instead.
+#   - additional_attributes['template_params'] / ['is_template']  -> template send
+#   - content_type 'template' / 'incoming_email'                  -> not a CS reply
+def is_template_message(msg: dict | None) -> bool:
+    """Authoritative template check using Chatwoot's own message metadata."""
+    if not msg:
+        return False
+    ct = str(msg.get("content_type") or "").strip().lower()
+    if ct in ("template", "incoming_email"):
+        return True
+    # Chatwoot enum: 0=text .. 9=template (numeric form from raw SQL/webhook)
+    if str(msg.get("content_type")) == "9":
+        return True
+    aa = msg.get("additional_attributes") or {}
+    if isinstance(aa, dict):
+        # presence-based, not truthiness-based: Chatwoot may send an empty
+        # template_params ({}) for a template with no variables — that is still a template.
+        for key in ("template_params", "is_template", "template"):
+            if key in aa and aa.get(key) is not False:
+                return True
+    return False
+
+
+def classify_first_reply(body: str, msg: dict | None = None):
+    """section 6: first human reply must greet, and identify (name or brand).
+
+    2026-07-11 FIX (Omar): previously required greeting AND self AND brand — all three.
+    That forced one rigid sentence and flagged correct, polite replies. A reply that
+    greets and identifies (either by agent name or by brand) is professionally valid.
+    Returns dict or None.
+    """
+    # authoritative: a template send is not a customer-service reply at all
+    if is_template_message(msg):
+        return None
     t = normalize(body or "")
     if not t:
         return None
@@ -251,11 +297,12 @@ def classify_first_reply(body: str):
     has_hello = bool(_hit(t, GREET_HELLO))
     has_self  = bool(_hit(t, GREET_SELF))
     has_brand = bool(_hit(t, GREET_BRAND))
-    if has_hello and has_self and has_brand:
+    # greeting is required; identification may be by name OR brand (not both)
+    if has_hello and (has_self or has_brand):
         return None
     return _mk("missing_greeting", "low", "first_reply",
-               "\u0627\u0644\u0631\u062f \u0627\u0644\u0623\u0648\u0644 \u0644\u0627 \u064a\u062d\u062a\u0648\u064a \u0639\u0644\u0649 \u062a\u0631\u062d\u064a\u0628 \u0648\u062a\u0639\u0631\u064a\u0641 \u0628\u0627\u0644\u0627\u0633\u0645 \u0648\u0630\u0643\u0631 \u0643\u0648\u0627\u064a \u062f\u0627\u0648.",
-               "\u00ab\u0623\u0647\u0644\u0627\u064b \u0628\u0643\u060c \u0645\u0639\u0643 [\u0627\u0644\u0627\u0633\u0645] \u0645\u0646 \u062e\u062f\u0645\u0629 \u0639\u0645\u0644\u0627\u0621 \u0643\u0648\u0627\u064a \u062f\u0627\u0648\u060c \u0643\u064a\u0641 \u0623\u0642\u062f\u0631 \u0623\u0633\u0627\u0639\u062f\u0643\u061f\u00bb",
+               "\u0627\u0644\u0631\u062f \u0627\u0644\u0623\u0648\u0644 \u0644\u0627 \u064a\u062d\u062a\u0648\u064a \u0639\u0644\u0649 \u062a\u0631\u062d\u064a\u0628 \u0645\u0639 \u062a\u0639\u0631\u064a\u0641 \u0628\u0627\u0644\u0627\u0633\u0645 \u0623\u0648 \u0630\u0643\u0631 \u0643\u0648\u0627\u064a \u062f\u0627\u0648.",
+               "\u00ab\u0623\u0647\u0644\u0627\u064b \u0628\u0643\u060c \u0645\u0639\u0643 [\u0627\u0644\u0627\u0633\u0645] \u0645\u0646 \u062e\u062f\u0645\u0629 \u0639\u0645\u0644\u0627\u0621 \u0643\u0648\u0627\u064a \u062f\u0627\u0648\u060c \u0643\u064a\u0641 \u0623\u0642\u062f\u0631 \u0623\u0633\u0627\u0639\u062f\u0643\u061f\u00bb \u2014 \u0648\u064a\u064f\u0642\u0628\u0644 \u0623\u064a\u0636\u0627\u064b \u0627\u0644\u0631\u062f \u0639\u0644\u0649 \u0627\u0644\u0633\u0644\u0627\u0645: \u00ab\u0648\u0639\u0644\u064a\u0643\u0645 \u0627\u0644\u0633\u0644\u0627\u0645\u060c \u0645\u0639\u0643 [\u0627\u0644\u0627\u0633\u0645]...\u00bb",
                "Section 6")
 
 

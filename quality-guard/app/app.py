@@ -11,7 +11,7 @@ Hard guarantees:
 import os, io, csv, datetime, json
 import asyncpg, httpx
 from fastapi import FastAPI, Request, Response, Query, Body
-from classifier import classify, classify_first_reply, classify_closing, snippet, is_opening_template, classify_customer_abuse
+from classifier import classify, classify_first_reply, classify_closing, snippet, is_opening_template, is_template_message, classify_customer_abuse
 import report_ui
 import sla
 import asyncio
@@ -211,10 +211,13 @@ async def webhook(request: Request, secret: str = Query(default="")):
     # 2) greeting check — fire on the agent's FIRST reply that comes AFTER the customer has
     #    engaged. Uses an authoritative Chatwoot lookup (not a local flag) to avoid missed
     #    webhooks / races. The approved outreach opening template is never evaluated.
-    if not is_priv and not is_opening_template(msg.get("content", "")):
+    #    2026-07-11 FIX (Omar): pass the full msg payload so the classifier can read
+    #    Chatwoot's authoritative template flag (content_type / additional_attributes)
+    #    instead of guessing from a hardcoded phrase list.
+    if not is_priv and not is_template_message(msg) and not is_opening_template(msg.get("content", "")):
         gstate = await _greeting_should_check(conv_id, msg.get("id"))
         if gstate:
-            g = classify_first_reply(msg.get("content", ""))
+            g = classify_first_reply(msg.get("content", ""), msg)
             if g:
                 fired.append(g)
 
