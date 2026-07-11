@@ -29,3 +29,8 @@ add_css.py
 # OS
 .DS_Store
 Thumbs.db
+
+# QA backups — contain real customer conversation content (names, order numbers).
+# PDPL: never commit. Kept on-server only.
+_backup_*.csv
+_backups_*/
