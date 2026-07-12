@@ -68,4 +68,3 @@ asyncio.run(m())"
 
 > ⚠ Re-check the injected script after every Chatwoot upgrade (same as all `qaydao-*.js`).
 > The server files are the source of truth for live behavior; this is a snapshot.
-> ⚠ There is currently **no automated backup** of `returns_db` — worth adding before heavy use.
