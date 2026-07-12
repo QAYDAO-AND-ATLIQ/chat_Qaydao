@@ -277,13 +277,15 @@ _PAGE = r"""<!doctype html>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تقارير جودة الموظفين — Quality Guard</title>
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=cairo:400,600,700,800&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#f7f8fa; --card:#fff; --ink:#1f2733; --muted:#6b7280; --line:#e5e7eb;
     --brand:#1f6feb; --high:#dc2626; --med:#d97706; --low:#16a34a;
   }
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
-    font-family:-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;font-size:14px}
+    font-family:'Cairo',-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;font-size:14px;line-height:1.7}
   .wrap{max-width:1240px;margin:0 auto;padding:28px clamp(16px,4vw,40px) 48px}
   h1{font-size:19px;margin:0 0 4px} .sub{color:var(--muted);margin:0 0 16px;font-size:13px}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:26px}
@@ -364,7 +366,7 @@ _PAGE = r"""<!doctype html>
   .iconbtn{background:#fff;border:1px solid var(--line);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:12px}
   .iconbtn:hover{background:#f5f7fa}
   .iconbtn.danger{color:#dc2626;border-color:#f3c9c9}
-  .switch{position:relative;width:40px;height:22px;cursor:pointer}
+  .switch{position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;vertical-align:middle}
   .switch input{display:none}
   .slider{position:absolute;inset:0;background:#cbd5e1;border-radius:999px;transition:.2s}
   .slider:before{content:'';position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:3px;right:3px;transition:.2s}
@@ -387,6 +389,43 @@ _PAGE = r"""<!doctype html>
   .supsel{padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;cursor:pointer;background:#fff}
   .supsel.not_reviewed{border-color:#f0c36d;background:#fff8e8;color:#9a6700}
   .supsel.reviewed{border-color:#a7d8b4;background:#eaf7ee;color:#1a7f37}
+  /* ===== alert-types: two-level rules ===== */
+  .lvlswitch{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px;gap:3px;margin-bottom:16px}
+  .lvlswitch button{font:inherit;font-weight:700;font-size:12.5px;padding:6px 18px;border:0;border-radius:999px;background:transparent;color:var(--muted);cursor:pointer;line-height:1.5;transition:background .15s,color .15s}
+  .lvlswitch button:hover{color:var(--ink)}
+  .lvlswitch button[aria-pressed="true"]{background:var(--brand);color:#fff}
+  .lvlswitch button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .atwrap{background:#fff;border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+  table.attable{width:100%;border-collapse:collapse;table-layout:fixed;min-width:1150px}
+  table.attable col.c-type{width:auto}
+  table.attable col.c-cat{width:130px}
+  table.attable col.c-state{width:68px}
+  table.attable col.c-sev{width:104px}
+  table.attable col.c-max{width:168px}
+  table.attable col.c-cd{width:112px}
+  table.attable col.c-thr{width:84px}
+  table.attable col.c-phr{width:104px}
+  table.attable col.c-act{width:128px}
+  table.attable th,table.attable td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;text-align:start}
+  table.attable thead th{font-size:11px;font-weight:700;color:var(--muted);background:#fafbfc;white-space:normal;line-height:1.5;vertical-align:middle}
+  table.attable tbody tr:last-child td{border-bottom:0}
+  table.attable td.cell-type{overflow:hidden}
+  .tname{display:block;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tkey{display:block;font-size:10.5px;color:var(--muted);direction:ltr;unicode-bidi:isolate;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  tr.catrow td{background:#f2f5f9;font-weight:700;font-size:12px;color:#475569;padding:7px 12px}
+  tr.t-off .tname{color:var(--muted);font-weight:600}
+  .catchip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:600;background:#eef2f7;color:#475569;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .atnum{width:66px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font-family:inherit;font-variant-numeric:tabular-nums;direction:ltr;text-align:center;unicode-bidi:isolate}
+  .atnum:focus-visible,.atsel:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+  .atsel{padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:#fff;cursor:pointer}
+  .atsel.high{border-color:#f3c9c9;background:#fff5f5;color:#b91c1c}
+  .atsel.medium{border-color:#f0d9b5;background:#fffaf0;color:#b45309}
+  .atsel.low{border-color:#bfe3c8;background:#f2fbf5;color:#15803d}
+  .athint{font-size:10.5px;color:var(--muted);white-space:nowrap}
+  .iconbtn:disabled{opacity:.45;cursor:not-allowed;background:#fafafa}
+  .atflash>td{animation:atsaved .9s ease-out}
+  @keyframes atsaved{0%{background:#e8f5ec}100%{background:transparent}}
+  @media (prefers-reduced-motion:reduce){.atflash>td{animation:none}}
 </style>
 </head>
 <body>
@@ -514,23 +553,58 @@ _PAGE = r"""<!doctype html>
         <button class="subtab" data-sub="audit" onclick="showSub('audit')">📝 سجل التدقيق</button>
       </div>
 
-      <!-- ===== RULES ===== -->
+      <!-- ===== RULES (level ① alert types / level ② phrases) ===== -->
       <div id="sub-rules" class="section">
-        <div class="help">قواعد التنبيهات هي العبارات التي يرصدها النظام في ردود الموظفين أو ملاحظاتهم الداخلية. عند تطابق عبارة، يصدر تنبيه داخلي خاص بنوعها ودرجة خطورتها. يمكنك إضافة عبارات جديدة، تعديل النص أو المقترح، إيقاف قاعدة مؤقتاً، أو حذفها.</div>
-        <div class="toolbar">
-          <input type="text" id="rules_search" class="search" placeholder="🔍 بحث في العبارات…" oninput="renderRules()">
-          <select id="rules_scope" class="filter" onchange="renderRules()">
-            <option value="">كل النطاقات</option><option value="external">رد خارجي</option><option value="note">نوت داخلي</option>
-          </select>
-          <select id="rules_sev" class="filter" onchange="renderRules()">
-            <option value="">كل الخطورات</option><option value="high">عالية</option><option value="medium">متوسطة</option><option value="low">منخفضة</option>
-          </select>
-          <select id="rules_sort" class="filter" onchange="renderRules()">
-            <option value="phrase">ترتيب: العبارة</option><option value="severity">ترتيب: الخطورة</option><option value="alert_type">ترتيب: النوع</option>
-          </select>
-          <button class="btn" onclick="openRuleForm()">+ قاعدة جديدة</button>
+        <div class="lvlswitch" role="group" aria-label="مستوى قواعد التنبيهات">
+          <button type="button" id="lvlbtn-types" aria-pressed="true" onclick="showRulesLevel('types')">① أنواع التنبيهات</button>
+          <button type="button" id="lvlbtn-phrases" aria-pressed="false" onclick="showRulesLevel('phrases')">② العبارات</button>
         </div>
-        <div id="ruleslist" class="cardlist"></div>
+
+        <div id="rules-level-types">
+          <div class="help">أنواع التنبيهات هي مفاتيح التحكم الرئيسية بالنظام: تشغيل أو إيقاف أي نوع، تعديل خطورته، تحديد <b>عدد مرات التكرار المسموح في المحادثة الواحدة</b> (0 = بلا حد)، فترة تهدئة بين تنبيهين متتاليين، والعتبة للأنواع القياسية (زمن الرد وعدد الملاحظات). التعديلات تسري خلال دقيقة دون إعادة تشغيل. الأنواع النظامية يمكن إيقافها ولا يمكن حذفها.</div>
+          <div class="toolbar">
+            <span class="athint" id="attypes_count"></span>
+            <span style="flex:1"></span>
+            <button class="btn" onclick="openAtypeForm()">+ نوع مخصص</button>
+          </div>
+          <div class="atwrap">
+            <table class="attable">
+              <colgroup>
+                <col class="c-type"><col class="c-cat"><col class="c-state"><col class="c-sev">
+                <col class="c-max"><col class="c-cd"><col class="c-thr"><col class="c-phr"><col class="c-act">
+              </colgroup>
+              <thead><tr>
+                <th>النوع</th><th>الفئة</th><th>الحالة</th><th>الخطورة</th>
+                <th title="عدد مرات التكرار المسموح في المحادثة الواحدة (0 = بلا حد)">عدد مرات التكرار في المحادثة</th>
+                <th title="لا تنبيه جديد من نفس النوع في نفس المحادثة قبل مرور هذه المدة">التهدئة (دقائق)</th>
+                <th title="زمن الرد بالدقائق أو حد الملاحظات — للأنواع القياسية فقط">العتبة</th>
+                <th>العبارات</th><th>إجراءات</th>
+              </tr></thead>
+              <tbody id="atbody"><tr><td colspan="9" class="empty2">جارِ التحميل…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="rules-level-phrases" style="display:none">
+          <div class="help">العبارات هي ما يرصده النظام حرفياً في ردود الموظفين أو ملاحظاتهم الداخلية أو رسائل العملاء. عند تطابق عبارة، يصدر تنبيه من نوعها وبدرجة خطورتها. يمكنك إضافة عبارات جديدة، تعديل النص أو المقترح، إيقاف قاعدة مؤقتاً، أو حذفها.</div>
+          <div class="toolbar">
+            <input type="text" id="rules_search" class="search" placeholder="🔍 بحث في العبارات…" oninput="renderRules()">
+            <select id="rules_type" class="filter" onchange="renderRules()">
+              <option value="">كل الأنواع</option>
+            </select>
+            <select id="rules_scope" class="filter" onchange="renderRules()">
+              <option value="">كل النطاقات</option><option value="external">رد خارجي</option><option value="note">نوت داخلي</option><option value="customer">من العميل</option>
+            </select>
+            <select id="rules_sev" class="filter" onchange="renderRules()">
+              <option value="">كل الخطورات</option><option value="high">عالية</option><option value="medium">متوسطة</option><option value="low">منخفضة</option>
+            </select>
+            <select id="rules_sort" class="filter" onchange="renderRules()">
+              <option value="phrase">ترتيب: العبارة</option><option value="severity">ترتيب: الخطورة</option><option value="alert_type">ترتيب: النوع</option>
+            </select>
+            <button class="btn" onclick="openRuleForm()">+ قاعدة جديدة</button>
+          </div>
+          <div id="ruleslist" class="cardlist"></div>
+        </div>
       </div>
 
       <!-- ===== POLICIES ===== -->
@@ -555,7 +629,7 @@ _PAGE = r"""<!doctype html>
 
       <!-- ===== SLA ===== -->
       <div id="sub-sla" class="section" style="display:none">
-        <div class="help">زمن الرد الأولي (SLA): إذا راسل العميل خلال أوقات الدوام ولم يرد الموظف خلال المدة المحددة، يصدر تنبيه «تأخر الرد الأولي». حدّد المدة بالدقائق وساعات الدوام.</div>
+        <div class="help">زمن الرد الأولي (SLA): إذا راسل العميل خلال أوقات الدوام ولم يرد الموظف خلال المدة المحددة، يصدر تنبيه «تأخر الرد الأولي». حدّد المدة بالدقائق وساعات الدوام.<br><b>ملاحظة:</b> مدة الرد بالدقائق تُدار الآن من عمود «العتبة» لنوع «تأخر أول رد (SLA)» في «قواعد التنبيهات ← أنواع التنبيهات» — القيمة هنا احتياطية فقط.</div>
         <div id="slabox" class="formgrid"></div>
       </div>
 
@@ -874,6 +948,7 @@ function showSub(x){
   });
   document.querySelectorAll('.subtab').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-sub')===x); });
   if(x==='rules'||x==='chat') loadRules();
+  if(x==='rules') loadAlertTypes();
   if(x==='policies') loadPolicies();
   if(x==='sla') loadSla();
   if(x==='config') loadConfig();
@@ -901,9 +976,10 @@ var SETTING_AR = {
 var ACTION_AR = {
   create_rule:'إضافة قاعدة', update_rule:'تعديل قاعدة', delete_rule:'حذف قاعدة',
   create_policy:'إضافة سياسة', update_policy:'تعديل سياسة', toggle_policy:'تشغيل/إيقاف سياسة',
-  delete_policy:'حذف سياسة', update_setting:'تعديل إعداد'
+  delete_policy:'حذف سياسة', update_setting:'تعديل إعداد',
+  create_alert_type:'إضافة نوع تنبيه', update_alert_type:'تعديل نوع تنبيه', delete_alert_type:'حذف نوع تنبيه'
 };
-var ENTITY_AR = { rules:'القواعد', policies:'السياسات', settings:'الإعدادات' };
+var ENTITY_AR = { rules:'القواعد', policies:'السياسات', settings:'الإعدادات', alert_types:'أنواع التنبيهات' };
 function polcatAr(c){ return POLCAT_AR[c] || c; }
 function settingAr(k){ return SETTING_AR[k] || k; }
 function actionAr(a){ return ACTION_AR[a] || a; }
@@ -916,14 +992,16 @@ async function loadRules(){
   if(!r.ok){ return; }
   RULES = (await r.json()).rules || [];
   renderRules(); renderChat();
+  if(ATYPES.length) renderAlertTypes();  // refresh phrase counters
 }
 function rulesFilterSort(list, opts){
   var q=(opts.q||'').trim();
   var out = list.filter(function(x){ return x.is_active; });
   if(opts.scope) out = out.filter(function(x){ return x.scope===opts.scope; });
   if(opts.sev) out = out.filter(function(x){ return x.severity===opts.sev; });
+  if(opts.type) out = out.filter(function(x){ return x.alert_type===opts.type; });
   if(opts.chatOnly) out = out.filter(function(x){ return CHAT_TYPES.indexOf(x.alert_type)>=0; });
-  if(opts.notChat) out = out.filter(function(x){ return CHAT_TYPES.indexOf(x.alert_type)<0; });
+  if(opts.notChat && !opts.type) out = out.filter(function(x){ return CHAT_TYPES.indexOf(x.alert_type)<0; });
   if(q) out = out.filter(function(x){ return (x.phrase||'').indexOf(q)>=0 || (x.alert_type||'').indexOf(q)>=0; });
   var sort = opts.sort||'phrase';
   var sevOrd={high:0,medium:1,low:2};
@@ -953,7 +1031,7 @@ function switchHtml(on, onchange){
   return '<label class="switch"><input type="checkbox" '+(on?'checked':'')+' onchange="'+onchange+'"><span class="slider"></span></label>';
 }
 function renderRules(){
-  var opts={q:val('rules_search'),scope:val('rules_scope'),sev:val('rules_sev'),sort:val('rules_sort'),notChat:true};
+  var opts={q:val('rules_search'),scope:val('rules_scope'),sev:val('rules_sev'),sort:val('rules_sort'),type:val('rules_type'),notChat:true};
   var list=rulesFilterSort(RULES,opts);
   var el=document.getElementById('ruleslist');
   el.innerHTML = list.length? list.map(ruleCard).join('') : '<div class="empty2">لا توجد قواعد مطابقة</div>';
@@ -973,6 +1051,137 @@ async function delRule(id){
   if(!confirm('حذف هذه القاعدة؟')) return;
   await fetch('admin/rules/'+id+'?actor='+encodeURIComponent(ACTOR),{method:'DELETE',headers:H()});
   loadRules();
+}
+
+// ---------- ALERT TYPES (level ① — manager control panel) ----------
+var ATYPES = [];
+var CAT_AR = {chat_standards:'معايير الشات المباشر',policy:'السياسات الرسمية',agent_conduct:'سلوك الموظف',
+              risk:'مخاطر',internal_notes:'الملاحظات الداخلية',customer_conduct:'سلوك العميل',custom:'مخصص'};
+function catAr(c){ return CAT_AR[c] || c; }
+
+function showRulesLevel(x){
+  document.getElementById('rules-level-types').style.display = (x==='types')?'block':'none';
+  document.getElementById('rules-level-phrases').style.display = (x==='phrases')?'block':'none';
+  document.getElementById('lvlbtn-types').setAttribute('aria-pressed', x==='types');
+  document.getElementById('lvlbtn-phrases').setAttribute('aria-pressed', x==='phrases');
+  if(x==='types') loadAlertTypes();
+  if(x==='phrases') renderRules();
+}
+async function loadAlertTypes(){
+  var r = await fetch('admin/alert-types',{headers:H()}); if(!r.ok) return;
+  ATYPES = (await r.json()).alert_types || [];
+  renderAlertTypes(); fillTypeFilter();
+}
+function fillTypeFilter(){
+  var sel = document.getElementById('rules_type'); if(!sel) return;
+  var cur = sel.value;
+  sel.innerHTML = '<option value="">كل الأنواع</option>' +
+    ATYPES.map(function(t){ return '<option value="'+esc(t.alert_type)+'">'+esc(t.name_ar)+'</option>'; }).join('');
+  sel.value = cur;
+}
+function atFind(t){ for(var i=0;i<ATYPES.length;i++) if(ATYPES[i].alert_type===t) return ATYPES[i]; return null; }
+function phraseCount(t){
+  var n=0; for(var i=0;i<RULES.length;i++) if(RULES[i].is_active && RULES[i].alert_type===t) n++;
+  return n;
+}
+function atRow(x){
+  var k = esc(x.alert_type);
+  var thrCell = (x.threshold_value!==null && x.threshold_value!==undefined)
+    ? '<input type="number" min="1" step="1" class="atnum" value="'+x.threshold_value+'" onchange="saveAtypeNum(\''+k+'\',\'threshold_value\',this)">'
+    : '<span class="athint">—</span>';
+  var delBtn = x.is_system
+    ? '<button class="iconbtn danger" disabled title="نوع نظامي — يمكن إيقافه لا حذفه">حذف</button>'
+    : '<button class="iconbtn danger" onclick="delAtype(\''+k+'\')">حذف</button>';
+  var maxV = x.max_per_conversation || 0;
+  return '<tr id="atr-'+k+'" class="'+(x.is_enabled?'':'t-off')+'">'+
+    '<td class="cell-type"><span class="tname" title="'+esc(x.description_ar||x.name_ar)+'">'+esc(x.name_ar)+'</span>'+
+      '<span class="tkey">'+k+'</span></td>'+
+    '<td><span class="catchip">'+esc(catAr(x.category))+'</span></td>'+
+    '<td>'+switchHtml(x.is_enabled, "toggleAtype('"+k+"',this)")+'</td>'+
+    '<td><select class="atsel '+x.severity+'" onchange="saveAtype(\''+k+'\',{severity:this.value})">'+
+      opts(['high','medium','low'],['عالية','متوسطة','منخفضة'],x.severity)+'</select></td>'+
+    '<td><input type="number" min="0" step="1" class="atnum" value="'+maxV+'" onchange="saveAtypeNum(\''+k+'\',\'max_per_conversation\',this)"> '+
+      '<span class="athint">'+(maxV===0?'بلا حد':'')+'</span></td>'+
+    '<td><input type="number" min="0" step="1" class="atnum" value="'+(x.cooldown_minutes||0)+'" onchange="saveAtypeNum(\''+k+'\',\'cooldown_minutes\',this)"></td>'+
+    '<td>'+thrCell+'</td>'+
+    '<td><button class="iconbtn" onclick="showPhrasesFor(\''+k+'\')">عبارات ('+phraseCount(x.alert_type)+')</button></td>'+
+    '<td><button class="iconbtn" onclick="editAtype(\''+k+'\')">تعديل</button> '+delBtn+'</td>'+
+  '</tr>';
+}
+function renderAlertTypes(){
+  var tb = document.getElementById('atbody'); if(!tb) return;
+  var cnt = document.getElementById('attypes_count');
+  if(!ATYPES.length){ tb.innerHTML='<tr><td colspan="9" class="empty2">لا توجد أنواع معرّفة</td></tr>'; if(cnt) cnt.textContent=''; return; }
+  var html='', lastCat=null;
+  ATYPES.forEach(function(x){
+    if(x.category!==lastCat){
+      lastCat = x.category;
+      var n = ATYPES.filter(function(y){ return y.category===x.category; }).length;
+      html += '<tr class="catrow"><td colspan="9">'+esc(catAr(x.category))+' <span class="athint">('+n+')</span></td></tr>';
+    }
+    html += atRow(x);
+  });
+  tb.innerHTML = html;
+  if(cnt) cnt.textContent = ATYPES.length+' نوعاً · المفعّل: '+ATYPES.filter(function(x){return x.is_enabled;}).length;
+}
+async function saveAtype(t, patch){
+  patch._actor = ACTOR;
+  var r = await fetch('admin/alert-types/'+encodeURIComponent(t),{method:'PUT',headers:H(),body:JSON.stringify(patch)});
+  if(!r.ok){ alert('تعذّر حفظ التعديل'); }
+  await loadAlertTypes();
+  var row = document.getElementById('atr-'+t);
+  if(row){ row.classList.remove('atflash'); void row.offsetWidth; row.classList.add('atflash'); }
+}
+function saveAtypeNum(t, field, inp){
+  var v = parseInt(inp.value,10);
+  if(isNaN(v) || v<0) v = 0;
+  if(field==='threshold_value' && v<1) v = 1;
+  inp.value = v;
+  var patch = {}; patch[field] = v;
+  saveAtype(t, patch);
+}
+async function toggleAtype(t, inp){
+  var x = atFind(t); if(!x) return;
+  if(x.is_enabled && x.severity==='high'){
+    if(!confirm('⚠️ «'+x.name_ar+'» نوع بخطورة عالية.\nإيقافه يعني عدم رصد أي حالة منه نهائياً حتى إعادة تفعيله. هل أنت متأكد؟')){ inp.checked=true; return; }
+    if(!confirm('تأكيد نهائي: إيقاف النوع عالي الخطورة «'+x.name_ar+'»؟')){ inp.checked=true; return; }
+  }
+  saveAtype(t, {is_enabled: !x.is_enabled});
+}
+async function delAtype(t){
+  var x = atFind(t) || {};
+  if(!confirm('حذف نوع «'+(x.name_ar||t)+'» نهائياً؟ لا يمكن التراجع.')) return;
+  var r = await fetch('admin/alert-types/'+encodeURIComponent(t)+'?actor='+encodeURIComponent(ACTOR),{method:'DELETE',headers:H()});
+  if(!r.ok) alert('تعذّر الحذف: '+(await r.text()));
+  loadAlertTypes();
+}
+function showPhrasesFor(t){
+  showRulesLevel('phrases');
+  var sel = document.getElementById('rules_type');
+  if(sel){ if(!sel.querySelector('option[value="'+t+'"]')) fillTypeFilter(); sel.value = t; }
+  renderRules();
+}
+function editAtype(t){
+  var x = atFind(t); if(!x) return;
+  MODAL_MODE='atype_edit'; MODAL_ID=t;
+  document.getElementById('modal-title').textContent = 'تعديل نوع «'+x.name_ar+'»';
+  document.getElementById('modal-body').innerHTML =
+    '<label>الاسم الظاهر<input type="text" id="at_name" value="'+esc(x.name_ar)+'"></label>'+
+    '<label>الوصف<textarea id="at_desc" rows="2">'+esc(x.description_ar||'')+'</textarea></label>'+
+    '<label>المقترح البديل (يظهر في التنبيه)<textarea id="at_sugg" rows="2">'+esc(x.suggested_correction||'')+'</textarea></label>';
+  openModal();
+}
+function openAtypeForm(){
+  MODAL_MODE='atype_new'; MODAL_ID=null;
+  document.getElementById('modal-title').textContent = 'نوع تنبيه مخصص جديد';
+  document.getElementById('modal-body').innerHTML =
+    '<label>المعرّف الداخلي (إنجليزي snake_case)<input type="text" id="at_key" placeholder="مثال: custom_vip_delay"></label>'+
+    '<label>الاسم الظاهر<input type="text" id="at_name"></label>'+
+    '<label>الوصف<textarea id="at_desc" rows="2"></textarea></label>'+
+    '<label>النطاق<select id="at_scope">'+opts(['external','note','customer'],['رد خارجي','نوت داخلي','من العميل'],'external')+'</select></label>'+
+    '<label>الخطورة<select id="at_sev">'+opts(['high','medium','low'],['عالية','متوسطة','منخفضة'],'medium')+'</select></label>'+
+    '<label>عدد مرات التكرار في المحادثة (0 = بلا حد)<input type="number" id="at_max" value="1" min="0"></label>';
+  openModal();
 }
 
 // ---------- MODAL (rule form) ----------
@@ -1115,6 +1324,17 @@ async function modalSave(){
     if(!pb.official_statement){ alert('النص الرسمي مطلوب'); return; }
     await fetch('admin/policies',{method:'POST',headers:H(),body:JSON.stringify(pb)});
     closeModal(); loadPolicies();
+  } else if(MODAL_MODE==='atype_edit'){
+    await saveAtype(MODAL_ID,{name_ar:val('at_name'),description_ar:val('at_desc'),suggested_correction:val('at_sugg')});
+    closeModal();
+  } else if(MODAL_MODE==='atype_new'){
+    var nb={alert_type:val('at_key').trim(),name_ar:val('at_name').trim(),description_ar:val('at_desc'),
+            scope:val('at_scope'),severity:val('at_sev'),
+            max_per_conversation:parseInt(val('at_max'),10)||0,_actor:ACTOR};
+    if(!nb.alert_type||!nb.name_ar){ alert('المعرّف الداخلي والاسم الظاهر مطلوبان'); return; }
+    var r=await fetch('admin/alert-types',{method:'POST',headers:H(),body:JSON.stringify(nb)});
+    if(!r.ok){ alert('تعذّر الإنشاء: '+(await r.text())); return; }
+    closeModal(); loadAlertTypes();
   }
 }
 
@@ -1248,6 +1468,42 @@ async def admin_rule_delete(rid: int, x_qg_admin: str = Header(default=""), x_cw
         return Response(content="unauthorized", status_code=401)
     await _admin.rule_delete(rid, actor)
     return {"deleted": rid}
+
+# ---------- Admin: alert types (gated + audited) ----------
+@router.get("/admin/alert-types")
+async def admin_alert_types(x_qg_admin: str = Header(default=""), x_cw_token: str = Header(default=""), x_cw_user: str = Header(default=""), x_cw_at: str = Header(default=""), x_cw_client: str = Header(default=""), x_cw_uid: str = Header(default="")):
+    if not await _require_admin(x_qg_admin, x_cw_token, x_cw_user, x_cw_at, x_cw_client, x_cw_uid):
+        return Response(content="unauthorized", status_code=401)
+    return {"alert_types": await _admin.alert_types_list()}
+
+@router.post("/admin/alert-types")
+async def admin_alert_type_create(payload: dict = Body(...), x_qg_admin: str = Header(default=""), x_cw_token: str = Header(default=""), x_cw_user: str = Header(default=""), x_cw_at: str = Header(default=""), x_cw_client: str = Header(default=""), x_cw_uid: str = Header(default="")):
+    if not await _require_admin(x_qg_admin, x_cw_token, x_cw_user, x_cw_at, x_cw_client, x_cw_uid):
+        return Response(content="unauthorized", status_code=401)
+    if not payload.get("alert_type") or not payload.get("name_ar"):
+        return Response(content="missing fields", status_code=400)
+    actor = payload.get("_actor", "admin")
+    nid = await _admin.alert_type_create(payload, actor)
+    return {"created": nid}
+
+@router.put("/admin/alert-types/{alert_type}")
+async def admin_alert_type_update(alert_type: str, payload: dict = Body(...), x_qg_admin: str = Header(default=""), x_cw_token: str = Header(default=""), x_cw_user: str = Header(default=""), x_cw_at: str = Header(default=""), x_cw_client: str = Header(default=""), x_cw_uid: str = Header(default="")):
+    if not await _require_admin(x_qg_admin, x_cw_token, x_cw_user, x_cw_at, x_cw_client, x_cw_uid):
+        return Response(content="unauthorized", status_code=401)
+    actor = payload.get("_actor", "admin")
+    ok = await _admin.alert_type_update(alert_type, payload, actor)
+    if ok is None:
+        return Response(content="not_found", status_code=404)
+    return {"updated": True}
+
+@router.delete("/admin/alert-types/{alert_type}")
+async def admin_alert_type_delete(alert_type: str, x_qg_admin: str = Header(default=""), x_cw_token: str = Header(default=""), x_cw_user: str = Header(default=""), x_cw_at: str = Header(default=""), x_cw_client: str = Header(default=""), x_cw_uid: str = Header(default=""), actor: str = Query(default="admin")):
+    if not await _require_admin(x_qg_admin, x_cw_token, x_cw_user, x_cw_at, x_cw_client, x_cw_uid):
+        return Response(content="unauthorized", status_code=401)
+    res = await _admin.alert_type_delete(alert_type, actor)
+    if not res.get("ok"):
+        return Response(content=res.get("error", "error"), status_code=409 if res.get("error") == "system_type_cannot_be_deleted" else 404)
+    return {"deleted": alert_type}
 
 @router.get("/admin/settings")
 async def admin_settings(x_qg_admin: str = Header(default=""), x_cw_token: str = Header(default=""), x_cw_user: str = Header(default=""), x_cw_at: str = Header(default=""), x_cw_client: str = Header(default=""), x_cw_uid: str = Header(default="")):

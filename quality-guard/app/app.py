@@ -57,7 +57,45 @@ def _is_private(msg: dict) -> bool:
     return bool(msg.get("private")) or msg.get("message_type") in ("template",) and False
 
 async def _store_alert(rec: dict):
+    """Store an alert IF the manager-controlled gate allows it.
+    Returns the new alert id, or None when the alert is suppressed
+    (type disabled / per-conversation cap reached / inside cooldown).
+    Callers MUST NOT post a private note when this returns None."""
     p = await pool()
+
+    # ═══ ALERT-TYPE ENFORCEMENT GATE ═══
+    # at is None (unknown type / table dropped) => fail-open: store as before.
+    at = await admin.get_alert_type(rec["alert_type"])
+    if at is not None:
+        # 1) type disabled by the manager
+        if not at["is_enabled"]:
+            return None
+
+        async with p.acquire() as c:
+            # 2) per-conversation repeat cap (0 = unlimited)
+            cap = at["max_per_conversation"] or 0
+            if cap > 0 and rec.get("conversation_id"):
+                seen = await c.fetchval(
+                    "SELECT count(*) FROM qg_alerts WHERE conversation_id=$1 AND alert_type=$2",
+                    rec["conversation_id"], rec["alert_type"])
+                if seen >= cap:
+                    return None
+
+            # 3) cooldown window (0 = none)
+            cd = at["cooldown_minutes"] or 0
+            if cd > 0 and rec.get("conversation_id"):
+                recent = await c.fetchval(
+                    "SELECT 1 FROM qg_alerts WHERE conversation_id=$1 AND alert_type=$2 "
+                    "AND created_at > now() - ($3 || ' minutes')::interval LIMIT 1",
+                    rec["conversation_id"], rec["alert_type"], str(cd))
+                if recent:
+                    return None
+
+        # 4) severity comes from the table (manager override);
+        #    auto-escalation below may still raise it to high.
+        rec["severity"] = at["severity"]
+    # ═══ END GATE ═══
+
     async with p.acquire() as c:
         # repeat detection: same employee + same alert_type in last 7 days
         prev = await c.fetchval(
@@ -153,7 +191,9 @@ async def webhook(request: Request, secret: str = Query(default="")):
                     "message_snippet": snippet(msg.get("content", "")), **cab,
                 }
                 aid = await _store_alert(rec)
-                await _post_private_note(cid, _fmt_note(cab))
+                if aid is None:
+                    return {"suppressed": True, "type": rec["alert_type"]}
+                await _post_private_note(cid, _fmt_note(rec))
                 return {"alert_id": aid, "type": "customer_abuse", "posted": POST_ALERTS}
         return {"skip": "not_human:" + str(sender_type)}
     # extra guard: exclude known bot user ids and any AI-assistant identities by name/email
@@ -225,11 +265,17 @@ async def webhook(request: Request, secret: str = Query(default="")):
         return {"classified": "safe"}
 
     alert_ids = []
+    suppressed = 0
     for res in fired:
         rec = {**base, **res}
-        alert_ids.append(await _store_alert(rec))
-        await _post_private_note(conv_id, _fmt_note(res))
-    return {"alert_ids": alert_ids, "count": len(alert_ids), "posted": POST_ALERTS}
+        aid = await _store_alert(rec)
+        if aid is None:
+            suppressed += 1
+            continue
+        alert_ids.append(aid)
+        await _post_private_note(conv_id, _fmt_note(rec))
+    return {"alert_ids": alert_ids, "count": len(alert_ids),
+            "suppressed": suppressed, "posted": POST_ALERTS}
 
 
 # Arabic display labels for in-conversation notes (internal keys stay unchanged in code/DB)
@@ -441,9 +487,10 @@ async def _excessive_notes_check(conv_id):
     if already:
         return None
     try:
-        limit = int(await admin.get_setting("max_internal_notes", "5") or "5")
+        _fallback = int(await admin.get_setting("max_internal_notes", "5") or "5")
     except Exception:
-        limit = 5
+        _fallback = 5
+    limit = await admin.get_alert_type_threshold("excessive_internal_notes", _fallback)
     # count private notes authored by humans (exclude the QG bot id=14 and system id=2)
     try:
         async with httpx.AsyncClient(timeout=10) as cl:
@@ -572,7 +619,9 @@ async def _handle_resolved(conv):
         "message_snippet": snippet(last.get("content", "")), **res,
     }
     alert_id = await _store_alert(rec)
-    await _post_private_note(conv_id, _fmt_note(res))
+    if alert_id is None:
+        return {"suppressed": True, "type": res["alert_type"]}
+    await _post_private_note(conv_id, _fmt_note(rec))
     return {"alert_id": alert_id, "type": res["alert_type"], "posted": POST_ALERTS}
 
 

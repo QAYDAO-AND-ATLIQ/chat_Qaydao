@@ -3,7 +3,7 @@ Quality Guard — DB-backed rules + admin layer.
 Rules/policies/settings live in the DB so admins edit them from the UI (no code changes).
 In-memory cache with TTL keeps matching fast. All admin writes are audit-logged and passphrase-gated.
 """
-import time, hashlib
+import time, json, hashlib
 from classifier import normalize
 
 _pool = None
@@ -38,6 +38,116 @@ async def get_rules(force=False):
 
 def invalidate():
     _cache["ts"] = 0
+
+# ---------------- alert-types cache ----------------
+# Manager-controlled per-type settings (enable/disable, severity override,
+# max_per_conversation, cooldown, threshold). Read by the enforcement gate
+# in app._store_alert on every alert, so it is cached like the rules above.
+_at_cache = {"types": None, "ts": 0}
+_AT_TTL = 60  # seconds
+
+async def _load_alert_types():
+    p = await _pool()
+    async with p.acquire() as c:
+        rows = await c.fetch("SELECT * FROM qg_alert_types")
+    return {r["alert_type"]: dict(r) for r in rows}
+
+async def get_alert_types(force=False):
+    now = time.time()
+    if force or _at_cache["types"] is None or (now - _at_cache["ts"]) > _AT_TTL:
+        _at_cache["types"] = await _load_alert_types()
+        _at_cache["ts"] = now
+    return _at_cache["types"]
+
+def invalidate_alert_types():
+    _at_cache["types"] = None
+
+async def get_alert_type(alert_type: str):
+    return (await get_alert_types()).get(alert_type)
+
+async def get_alert_type_threshold(alert_type: str, default: int):
+    """Dynamic threshold (SLA minutes / max notes) read from qg_alert_types.
+    Falls back to the given default when the type or value is missing."""
+    try:
+        at = await get_alert_type(alert_type)
+        if at and at.get("threshold_value"):
+            return int(at["threshold_value"])
+    except Exception:
+        pass
+    return default
+
+# ---------------- alert-type CRUD (audited) ----------------
+_AT_SEVERITIES = ("high", "medium", "low")
+
+async def alert_types_list():
+    p = await _pool()
+    async with p.acquire() as c:
+        rows = await c.fetch("SELECT * FROM qg_alert_types ORDER BY sort_order, alert_type")
+    return [dict(r) for r in rows]
+
+async def alert_type_update(alert_type: str, data: dict, actor: str):
+    p = await _pool()
+    async with p.acquire() as c:
+        old = await c.fetchrow("SELECT * FROM qg_alert_types WHERE alert_type=$1", alert_type)
+        if not old:
+            return None
+        sev = data.get("severity", old["severity"])
+        if sev not in _AT_SEVERITIES:
+            sev = old["severity"]
+        thr = data.get("threshold_value", old["threshold_value"])
+        await c.execute("""
+            UPDATE qg_alert_types SET
+              name_ar=$2, description_ar=$3, is_enabled=$4, severity=$5,
+              max_per_conversation=$6, cooldown_minutes=$7, threshold_value=$8,
+              suggested_correction=$9, updated_at=now()
+            WHERE alert_type=$1
+        """, alert_type,
+            data.get("name_ar", old["name_ar"]),
+            data.get("description_ar", old["description_ar"]),
+            bool(data.get("is_enabled", old["is_enabled"])),
+            sev,
+            max(0, int(data.get("max_per_conversation", old["max_per_conversation"]))),
+            max(0, int(data.get("cooldown_minutes", old["cooldown_minutes"]))),
+            int(thr) if thr is not None else None,
+            data.get("suggested_correction", old["suggested_correction"]))
+        await _audit(c, actor, "update_alert_type", "alert_types", alert_type,
+                     json.dumps(dict(old), default=str)[:2000], json.dumps(data, default=str)[:2000])
+    invalidate_alert_types()
+    return True
+
+async def alert_type_create(data: dict, actor: str):
+    sev = data.get("severity", "medium")
+    if sev not in _AT_SEVERITIES:
+        sev = "medium"
+    p = await _pool()
+    async with p.acquire() as c:
+        nid = await c.fetchval("""
+            INSERT INTO qg_alert_types
+              (alert_type,name_ar,description_ar,category,scope,is_enabled,severity,
+               max_per_conversation,cooldown_minutes,is_system,sort_order)
+            VALUES ($1,$2,$3,$4,$5,TRUE,$6,$7,$8,FALSE,900) RETURNING id
+        """, data["alert_type"], data["name_ar"], data.get("description_ar"),
+             data.get("category", "custom"), data.get("scope", "external"),
+             sev,
+             max(0, int(data.get("max_per_conversation", 1))),
+             max(0, int(data.get("cooldown_minutes", 0))))
+        await _audit(c, actor, "create_alert_type", "alert_types", nid, None, data["alert_type"])
+    invalidate_alert_types()
+    return nid
+
+async def alert_type_delete(alert_type: str, actor: str):
+    """Delete allowed only for non-system types. System types can be disabled, never deleted."""
+    p = await _pool()
+    async with p.acquire() as c:
+        row = await c.fetchrow("SELECT is_system FROM qg_alert_types WHERE alert_type=$1", alert_type)
+        if not row:
+            return {"ok": False, "error": "not_found"}
+        if row["is_system"]:
+            return {"ok": False, "error": "system_type_cannot_be_deleted"}
+        await c.execute("DELETE FROM qg_alert_types WHERE alert_type=$1", alert_type)
+        await _audit(c, actor, "delete_alert_type", "alert_types", alert_type, alert_type, None)
+    invalidate_alert_types()
+    return {"ok": True}
 
 async def classify_db(body: str, is_private: bool):
     """Match against DB rules. Returns dict or None. Honors safe-overrides + doc-quote guard via classifier consts."""

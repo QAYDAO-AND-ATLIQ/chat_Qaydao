@@ -16,6 +16,13 @@ except Exception:
     _RIYADH = datetime.timezone(datetime.timedelta(hours=3))
 
 SLA_MINUTES = int(os.environ.get("QG_FIRST_RESPONSE_SLA_MIN", "5"))
+
+
+async def _sla_minutes():
+    """SLA threshold read from qg_alert_types (manager-editable, cached 60s);
+    env value stays as the fallback so dropping the table restores old behavior."""
+    import admin
+    return await admin.get_alert_type_threshold("first_response_delay", SLA_MINUTES)
 WORK_START_H = 9
 WORK_END_H = 20
 # Python weekday(): Mon=0..Sun=6. Friday=4 is OFF. Sat=5..Thu=3 are working.
@@ -43,7 +50,7 @@ async def on_customer_message(pool, conv: dict, msg: dict):
     meta = conv.get("meta") or {}
     assignee = meta.get("assignee") or {}
     waiting = now_utc()
-    due = waiting + datetime.timedelta(minutes=SLA_MINUTES)
+    due = waiting + datetime.timedelta(minutes=await _sla_minutes())
     p = await pool()
     async with p.acquire() as c:
         # only (re)start the clock if not already waiting (don't push due_at forward on every customer msg)
@@ -101,12 +108,15 @@ async def sweep_overdue(pool, store_alert, post_note):
                 "matched_rule": "first_response_sla",
             }
             try:
-                await store_alert(rec)
-                note = (f"\U0001f6e1\ufe0f \u062a\u0646\u0628\u064a\u0647 \u062c\u0648\u062f\u0629 \u062f\u0627\u062e\u0644\u064a (Quality Guard)\n"
-                        f"\u0627\u0644\u0646\u0648\u0639: first_response_delay | \u0627\u0644\u062e\u0637\u0648\u0631\u0629: medium\n"
-                        f"\u0627\u0644\u0633\u0628\u0628: {rec['ai_reason']}\n"
-                        f"\u0627\u0644\u0625\u062c\u0631\u0627\u0621: {rec['suggested_correction']}")
-                await post_note(r["conversation_id"], note)
+                # store_alert may return None (type disabled / cap / cooldown).
+                # A suppressed alert MUST NOT produce a private note.
+                aid = await store_alert(rec)
+                if aid is not None:
+                    note = (f"\U0001f6e1\ufe0f \u062a\u0646\u0628\u064a\u0647 \u062c\u0648\u062f\u0629 \u062f\u0627\u062e\u0644\u064a (Quality Guard)\n"
+                            f"\u0627\u0644\u0646\u0648\u0639: first_response_delay | \u0627\u0644\u062e\u0637\u0648\u0631\u0629: {rec['severity']}\n"
+                            f"\u0627\u0644\u0633\u0628\u0628: {rec['ai_reason']}\n"
+                            f"\u0627\u0644\u0625\u062c\u0631\u0627\u0621: {rec['suggested_correction']}")
+                    await post_note(r["conversation_id"], note)
             finally:
                 await c.execute("UPDATE qg_pending_response SET alerted=TRUE WHERE conversation_id=$1", r["conversation_id"])
 
