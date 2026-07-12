@@ -1,44 +1,56 @@
-# Returns Service — Injection Layer (archival)
+# Returns Service — Injection Layer & Feature Reference (archival)
 
-The frontend of the Returns feature lives **outside** the Chatwoot repo on the server, following the
-existing `qaydao-*.js` injection pattern. This folder keeps an **archival copy** so the whole feature
-is reconstructable from git. These files are NOT auto-applied — they must be placed on the server.
+The Returns feature = a **fully isolated FastAPI sidecar** (this repo, `returns-service/`) + a
+**frontend injected into Chatwoot** + **nginx routes**. The frontend/nginx parts live outside the
+Chatwoot repo on the server (the existing `qaydao-*.js` pattern); archival copies are kept here so
+the whole feature is reconstructable from git. These files are NOT auto-applied.
 
 ## Files here
 
 | File | Live server location | Purpose |
 |------|----------------------|---------|
-| `qaydao-returns-tab.js` | `/var/www/qaydao-injection/qaydao-returns-tab.js` | The **المرجعات** dropdown injected into Chatwoot's sidebar: "طلب إرجاع جديد" (CS form overlay, wired to `conversation_id`) + "الطلبات المرفوعة" (team page). |
-| `nginx-returns-blocks.conf` | inside `/etc/nginx/sites-available/chat.qaydao.com` | The nginx `location` blocks + the `sub_filter` line that injects the script. |
+| `qaydao-returns-tab.js` | `/var/www/qaydao-injection/qaydao-returns-tab.js` | The **المرجعات** dropdown injected into Chatwoot's sidebar. |
+| `nginx-returns-blocks.conf` | inside `/etc/nginx/sites-available/chat.qaydao.com` | nginx `location` blocks + the `sub_filter` line that injects the script. |
 
-## How it wires together
+## What the feature does
 
-1. **Backend** (this repo, versioned): `returns-service/` — FastAPI on `127.0.0.1:8091` + isolated `returns_db`.
-   Deploy: `docker compose -p returns_service -f docker-compose.yml up -d`.
-2. **nginx** routes:
-   - `/accountant-returns` → basic-auth (`financial@qaydao.com`) → service accountant page.
-   - `/returns/team-requests` → service team page (opened inside Chatwoot; no bank columns).
-   - `/returns/api/...` → service API (used by the CS tab + both pages).
-   - `location = /qaydao-returns-tab.js` serves the injected script; a `sub_filter` adds
-     `<script src="/qaydao-returns-tab.js" defer>` before `</body>` on Chatwoot HTML.
-3. **Script** adds the sidebar dropdown; the CS form saves via `POST /returns/api/requests`;
-   the accountant changes status (incl. **rejected** with a mandatory reason).
+**Agent side (inside Chatwoot, no extra login):**
+- Sidebar dropdown **المرجعات** → *طلب إرجاع جديد* (form overlay) · *الطلبات المرفوعة* (team page).
+- Form fields are all **required**, incl. a **mandatory** bank-account file/image (PDF/JPG/PNG/WEBP, ≤10MB).
+  Conversation number is typed manually (prefilled from the URL) and is the `conversation_id` link.
+  "سبب آخر" reveals a free-text reason. Form resets after each submit.
+- **Agents are dynamic**: the script fetches the account's agents from Chatwoot
+  (`/api/v1/profile` → `/api/v1/accounts/{id}/agents`, using the agent's own session — **no token stored**)
+  to fill the *الموظف المسؤول* dropdown, and passes the list to the team page via `?agents=`.
 
-## To restore the frontend on a fresh server
+**Team page** (`/returns/team-requests`, opened inside Chatwoot):
+- **Agent boxes** (per *الموظف المسؤول*) + **8 status sections** inside the selected box:
+  الكل / جديدة / سيتم الإرجاع / جاري الإرجاع / تم الإرجاع / مرفوض / قديمة—تم الإرجاع / قديمة—مرفوضة.
+- Closed requests older than **7 days** move to the *قديمة* sections (age = last status change).
+- Shows the accountant's reject reason + an email-contact alert, and a **transfer-receipt** download.
+- **No bank account / IBAN columns** (privacy).
+
+**Accountant page** (`/accountant-returns`, session login):
+- Login page `/accountant-login` (email + password + تذكّرني 30d) · logout `/accountant-logout`.
+- Users in `accountant_users` (bcrypt) — currently `financial@qaydao.com` and `rami@qaydao.com`.
+- Same 8 status sections. Status flow is **pick → send**: choose a status, fill what it needs,
+  then press the single **إرسال** button.
+- **تم الإرجاع requires a transfer receipt** (PDF/image) — enforced in the UI *and* the API (400).
+- **مرفوض is final**: reason mandatory; a rejected request can never change status (409). Re-submitting
+  for that conversation creates a **new** request; the rejected one stays archived.
+
+## Restore on a fresh server
 
 ```bash
-# 1. copy the injected script
+# 1. backend
+cd returns-service && docker compose -p returns_service -f docker-compose.yml up -d
+
+# 2. injected script
 cp returns-service/injection/qaydao-returns-tab.js /var/www/qaydao-injection/
 
-# 2. add the nginx blocks from nginx-returns-blocks.conf into the HTTPS server{} block
-#    (before the main `location / {`), plus append the returns-tab script to the sub_filter line.
+# 3. nginx: add the blocks from nginx-returns-blocks.conf into the HTTPS server{} block
+#    (before the main `location / {`) and append the script to the sub_filter line.
 nginx -t && systemctl reload nginx
-
-# 3. accountant login is now SESSION-BASED (not nginx basic-auth).
-#    Users live in the `accountant_users` table (bcrypt passwords). Seed them with:
-#    docker exec returns_service python3 -c "..."  (bcrypt hash + INSERT) — see below.
-#    Login page: /accountant-login  ·  Logout: /accountant-logout
-#    Cookie 'returns_session' (httponly, secure); "تذكرني" = 30 days, else 1 day.
 ```
 
 ## Seeding an accountant user
@@ -55,4 +67,5 @@ asyncio.run(m())"
 ```
 
 > ⚠ Re-check the injected script after every Chatwoot upgrade (same as all `qaydao-*.js`).
-> This copy is a snapshot; the server file is the source of truth for live behavior.
+> The server files are the source of truth for live behavior; this is a snapshot.
+> ⚠ There is currently **no automated backup** of `returns_db` — worth adding before heavy use.
