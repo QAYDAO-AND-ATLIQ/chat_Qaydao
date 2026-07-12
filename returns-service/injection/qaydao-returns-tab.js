@@ -11,7 +11,50 @@
   var API = "/returns/api";
   var NAV_ID = "qd-returns-nav-item";
   var REASONS = ["المنتج تالف","المنتج غير مطابق للوصف","وصل منتج مختلف","العميل غيّر رأيه","تأخر التوصيل","مشكلة في المقاس أو اللون","نقص في الطلب","سبب آخر"];
-  var ASSIGNEES = ["في","مروة","أميرة"];
+  var ASSIGNEES = ["في","مروة","أميرة"];   // fallback only; the real list is fetched from Chatwoot
+  var AGENTS_CACHE = null;
+
+  // Fetch the account's agents from Chatwoot (uses the logged-in agent's cookie).
+  function fetchAgents(cb) {
+    if (AGENTS_CACHE) { cb(AGENTS_CACHE); return; }
+    fetch("/api/v1/profile", { credentials: "same-origin", headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (p) {
+        var accId = null;
+        try {
+          if (p && p.accounts && p.accounts.length) accId = p.accounts[0].id;
+          else if (p && p.account_id) accId = p.account_id;
+        } catch (e) {}
+        if (!accId) throw 0;
+        return fetch("/api/v1/accounts/" + accId + "/agents", {
+          credentials: "same-origin", headers: { "Accept": "application/json" }
+        }).then(function (r) { return r.ok ? r.json() : null; });
+      })
+      .then(function (list) {
+        var names = [];
+        if (Array.isArray(list)) {
+          list.forEach(function (a) {
+            var n = (a && (a.available_name || a.name || "")).trim();
+            if (n && names.indexOf(n) < 0) names.push(n);
+          });
+        }
+        AGENTS_CACHE = names.length ? names : ASSIGNEES.slice();
+        cb(AGENTS_CACHE);
+      })
+      .catch(function () { AGENTS_CACHE = ASSIGNEES.slice(); cb(AGENTS_CACHE); });
+  }
+
+  // Fill the assignee <select> with the live agent list.
+  function fillAssignees() {
+    var sel = document.getElementById("q_assignee");
+    if (!sel) return;
+    fetchAgents(function (names) {
+      var cur = sel.value;
+      sel.innerHTML = '<option value="">— اختر —</option>' +
+        names.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join("");
+      if (cur && names.indexOf(cur) >= 0) sel.value = cur;
+    });
+  }
 
   function convId() {
     var m = location.pathname.match(/\/conversations\/(\d+)/) || location.pathname.match(/\/inbox\/[^/]*\/(\d+)/);
@@ -88,8 +131,12 @@
     sub.appendChild(subItem("\u2795","طلب إرجاع جديد",function(){openPanel()}));
     sub.appendChild(subItem("\uD83D\uDCCB","الطلبات المرفوعة",function(){
       fetchAgentName(function(nm){
-        var url="/returns/team-requests"+(nm?("?agent="+encodeURIComponent(nm)):"");
-        window.open(url,"_blank");
+        fetchAgents(function(list){
+          var url="/returns/team-requests?"+
+            (nm?("agent="+encodeURIComponent(nm)+"&"):"")+
+            "agents="+encodeURIComponent((list||[]).join("|"));
+          window.open(url,"_blank");
+        });
       });
     }));
 
@@ -201,6 +248,7 @@
     if(cf&&cid)cf.value=cid;
     document.getElementById("q_rdate").value=today();
     toggleOtherReason();
+    fillAssignees();
     ov.classList.add("show");
   }
   function resetForm(){
@@ -293,6 +341,7 @@
   function start(){
     tryInject(15);
     try{ fetchAgentName(function(){}); }catch(e){}  // warm the name cache early
+    try{ fetchAgents(function(){}); }catch(e){}     // warm the agents list early
     var last=location.href;
     new MutationObserver(function(){
       if(location.href!==last){last=location.href;setTimeout(function(){tryInject(10)},500)}

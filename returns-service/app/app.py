@@ -906,7 +906,7 @@ async def team_requests():
         rows = await c.fetch(
             """SELECT id, conversation_id, customer_name, order_number, reason,
                       status, accountant_note, reject_reason, assignee,
-                      receipt_name, return_created_at, updated_at
+                      receipt_name, status_history, return_created_at, updated_at
                  FROM return_requests ORDER BY id DESC LIMIT 300"""
         )
     out = []
@@ -917,6 +917,11 @@ async def team_requests():
                 d[k] = d[k].isoformat()
         if d.get("updated_at") is not None:
             d["updated_at"] = d["updated_at"].isoformat()
+        if isinstance(d.get("status_history"), str):
+            try:
+                d["status_history"] = json.loads(d["status_history"])
+            except Exception:
+                d["status_history"] = []
         d["status_label"] = STATUS_LABELS.get(d.get("status"), d.get("status"))
         out.append(d)
     return out
@@ -951,6 +956,15 @@ header p{font-size:12.5px;color:var(--soft);margin-top:2px}
 .motiv .mp{font-size:12px;color:#2b4a47;margin-top:2px;line-height:1.5}
 .tools{display:flex;gap:10px;align-items:center;margin:16px 0;flex-wrap:wrap}
 .agents{display:flex;gap:11px;flex-wrap:wrap;margin:16px 0 4px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
+.tab{font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--soft);border-radius:999px;padding:7px 14px;transition:.15s;display:flex;align-items:center;gap:6px}
+.tab:hover{border-color:var(--brand);color:var(--brand)}
+.tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.tab .cnt{font-size:10.5px;font-weight:700;background:rgba(0,0,0,.12);border-radius:999px;padding:1px 6px;min-width:16px;text-align:center}
+.tab.active .cnt{background:rgba(255,255,255,.28)}
+.tab-old{border-style:dashed;color:#8a92a0}
+.tab-old:hover{border-color:#8a92a0;color:#5a6b7d}
+.tab-old.active{background:#5a6b7d;border-color:#5a6b7d;border-style:solid;color:#fff}
 .agent{cursor:pointer;background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:13px 20px;min-width:112px;text-align:center;transition:.15s;font-family:inherit}
 .agent:hover{border-color:var(--brand);transform:translateY(-1px);box-shadow:0 4px 14px rgba(31,43,58,.08)}
 .agent.active{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 4px 14px rgba(31,95,91,.25)}
@@ -991,13 +1005,17 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
 <div class="wrap">
   <div id="rejbar" class="rejbar"></div>
   <div class="agents" id="agents"></div>
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="all" onclick="setTab('all',this)">الكل <span class="cnt" id="tcnt-all">0</span></button>
+    <button class="tab" data-tab="new" onclick="setTab('new',this)">جديدة <span class="cnt" id="tcnt-new">0</span></button>
+    <button class="tab" data-tab="will" onclick="setTab('will',this)">سيتم الإرجاع <span class="cnt" id="tcnt-will">0</span></button>
+    <button class="tab" data-tab="doing" onclick="setTab('doing',this)">جاري الإرجاع <span class="cnt" id="tcnt-doing">0</span></button>
+    <button class="tab" data-tab="done" onclick="setTab('done',this)">تم الإرجاع <span class="cnt" id="tcnt-done">0</span></button>
+    <button class="tab" data-tab="rejected" onclick="setTab('rejected',this)">مرفوض <span class="cnt" id="tcnt-rejected">0</span></button>
+    <button class="tab tab-old" data-tab="old_done" onclick="setTab('old_done',this)">قديمة — تم الإرجاع <span class="cnt" id="tcnt-old_done">0</span></button>
+    <button class="tab tab-old" data-tab="old_rejected" onclick="setTab('old_rejected',this)">قديمة — مرفوضة <span class="cnt" id="tcnt-old_rejected">0</span></button>
+  </div>
   <div class="tools">
-    <select id="fstatus" onchange="render()">
-      <option value="">كل الحالات</option>
-      <option value="new">جديد</option><option value="will">سيتم الإرجاع</option>
-      <option value="doing">جاري الإرجاع</option><option value="done">تم الإرجاع</option>
-      <option value="rejected">مرفوض</option>
-    </select>
     <input id="fsearch" placeholder="بحث بالاسم أو رقم المحادثة أو الطلب…" oninput="render()">
     <span class="count" id="count"></span>
     <button class="refresh" onclick="load()">تحديث ⟳</button>
@@ -1035,14 +1053,71 @@ var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرج
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function load(){fetch(API).then(function(r){return r.json()}).then(function(d){DATA=Array.isArray(d)?d:[];render()}).catch(function(){})}
 var CURAGENT="";  // "" = الكل
-function setAgent(a){CURAGENT=a;renderAgents();render()}
-function renderAgents(){
-  var names=["في","مروة","أميرة"];
-  // include any other assignee that appears in the data
+function setAgent(a){CURAGENT=a;render()}
+
+/* --- status sections (same rules as the accountant page) --- */
+var CURTAB="all";
+var OLD_DAYS=7;
+function closedAt(x){
+  var h=x.status_history;
+  if(h&&h.length){var last=h[h.length-1];if(last&&last.at)return last.at}
+  return x.updated_at||x.return_created_at;
+}
+function isOld(x){
+  var t=closedAt(x);if(!t)return false;
+  var d=new Date(t);if(isNaN(d))return false;
+  return (Date.now()-d.getTime())>OLD_DAYS*86400000;
+}
+function inTab(x){
+  switch(CURTAB){
+    case "all":          return true;
+    case "new":          return x.status==="new";
+    case "will":         return x.status==="will";
+    case "doing":        return x.status==="doing";
+    case "done":         return x.status==="done"     && !isOld(x);
+    case "rejected":     return x.status==="rejected" && !isOld(x);
+    case "old_done":     return x.status==="done"     &&  isOld(x);
+    case "old_rejected": return x.status==="rejected" &&  isOld(x);
+    default:             return true;
+  }
+}
+function setTab(t,btn){
+  CURTAB=t;
+  var tabs=document.querySelectorAll("#tabs .tab");
+  for(var i=0;i<tabs.length;i++)tabs[i].classList.remove("active");
+  if(btn)btn.classList.add("active");
+  render();
+}
+function updateTabCounts(scope){
+  var c={all:scope.length,new:0,will:0,doing:0,done:0,rejected:0,old_done:0,old_rejected:0};
+  scope.forEach(function(x){
+    var o=isOld(x);
+    if(x.status==="new")c.new++;
+    else if(x.status==="will")c.will++;
+    else if(x.status==="doing")c.doing++;
+    else if(x.status==="done"){o?c.old_done++:c.done++}
+    else if(x.status==="rejected"){o?c.old_rejected++:c.rejected++}
+  });
+  Object.keys(c).forEach(function(k){
+    var e=document.getElementById("tcnt-"+k);if(e)e.textContent=c[k];
+  });
+}
+
+/* agent list: from Chatwoot (?agents=) + anyone appearing in the data */
+function agentNames(){
+  var names=[];
+  try{
+    var p=new URLSearchParams(location.search).get("agents");
+    if(p)p.split("|").forEach(function(n){n=n.trim();if(n&&names.indexOf(n)<0)names.push(n)});
+  }catch(e){}
   DATA.forEach(function(x){
     var a=(x.assignee||"").trim();
-    if(a && names.indexOf(a)<0) names.push(a);
+    if(a&&names.indexOf(a)<0)names.push(a);
   });
+  return names;
+}
+function renderAgents(){
+  var names=agentNames();
   var box=document.getElementById("agents");
   if(!box)return;
   var html='<button class="agent'+(CURAGENT===""?" active":"")+'" onclick="setAgent(\'\')">'+
@@ -1060,11 +1135,14 @@ function renderAgents(){
 }
 function render(){
   renderAgents();
-  var st=document.getElementById("fstatus").value;
+  // agent scope first, then the status tab, then search
+  var scope=DATA.filter(function(x){
+    return !CURAGENT || (x.assignee||"").trim()===CURAGENT;
+  });
+  updateTabCounts(scope);
   var q=document.getElementById("fsearch").value.trim().toLowerCase();
-  var list=DATA.filter(function(x){
-    if(CURAGENT && (x.assignee||"").trim()!==CURAGENT)return false;
-    if(st&&x.status!==st)return false;
+  var list=scope.filter(function(x){
+    if(!inTab(x))return false;
     if(q){var h=((x.customer_name||"")+" "+(x.conversation_id||"")+" "+(x.order_number||"")).toLowerCase();if(h.indexOf(q)<0)return false}
     return true;
   });
