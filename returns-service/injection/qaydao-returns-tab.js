@@ -164,7 +164,7 @@
         '<div class="qd-f"><label>بنك العميل <span class="req">*</span></label><input id="q_bank"></div>'+
         '<div class="qd-2"><div class="qd-f"><label>الحساب البنكي <span class="req">*</span></label><input id="q_acc" dir="ltr" style="text-align:right"></div>'+
           '<div class="qd-f"><label>الآيبان (IBAN) <span class="req">*</span></label><input id="q_iban" dir="ltr" style="text-align:right"></div></div>'+
-        '<div class="qd-f"><label>ملف / صورة الحساب البنكي (اختياري — PDF أو صورة، حتى 10MB)</label>'+
+        '<div class="qd-f"><label>ملف / صورة الحساب البنكي <span class="req">*</span> <span style="color:#c0392b;font-weight:600;font-size:11.5px">— إلزامي (PDF أو صورة، حتى 10MB)</span></label>'+
           '<input id="q_file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="padding:7px 10px">'+
           '<div id="q_file_cur" style="font-size:12px;color:#5a6b7d;margin-top:5px"></div></div>'+
         '<div class="qd-f"><label>الموظف المسؤول <span class="req">*</span></label><select id="q_assignee"><option value="">— اختر —</option>'+opts(ASSIGNEES)+'</select></div>'+
@@ -209,7 +209,7 @@
     });
     var rs=document.getElementById("q_reason");if(rs){rs.selectedIndex=0;rs.classList.remove("qd-invalid")}
     var as=document.getElementById("q_assignee");if(as){as.value="";as.classList.remove("qd-invalid")}
-    var fe=document.getElementById("q_file");if(fe)fe.value="";
+    var fe=document.getElementById("q_file");if(fe){fe.value="";fe.classList.remove("qd-invalid")}
     var cur=document.getElementById("q_file_cur");if(cur)cur.innerHTML="";
     var msg=document.getElementById("qd-msg");if(msg){msg.textContent="";msg.className="qd-msg"}
     window.__qd_current_rid=null;
@@ -245,7 +245,14 @@
     var reasonFinal=(reasonSel==="سبب آخر")?g("q_reason_other"):reasonSel;
     var fileEl=document.getElementById("q_file");
     var file=(fileEl&&fileEl.files&&fileEl.files.length)?fileEl.files[0]:null;
-    if(file&&file.size>10*1024*1024){msg.className="qd-msg err";msg.textContent="حجم الملف يتجاوز 10 ميجابايت.";return}
+    if(!file){
+      msg.className="qd-msg err";
+      msg.textContent="يجب إرفاق ملف أو صورة الحساب البنكي.";
+      if(fileEl){fileEl.classList.add("qd-invalid");fileEl.focus();fileEl.scrollIntoView({behavior:"smooth",block:"center"})}
+      return;
+    }
+    if(fileEl)fileEl.classList.remove("qd-invalid");
+    if(file.size>10*1024*1024){msg.className="qd-msg err";msg.textContent="حجم الملف يتجاوز 10 ميجابايت.";return}
 
     btn.disabled=true;msg.className="qd-msg";msg.textContent="جارٍ الحفظ…";
     var body={conversation_id:parseInt(convVal,10),customer_name:g("q_name"),order_number:g("q_order"),

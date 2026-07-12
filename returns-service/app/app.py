@@ -877,6 +877,15 @@ header p{font-size:12.5px;color:var(--soft);margin-top:2px}
 .motiv .mn{font-size:13.5px;font-weight:800;color:var(--brand)}
 .motiv .mp{font-size:12px;color:#2b4a47;margin-top:2px;line-height:1.5}
 .tools{display:flex;gap:10px;align-items:center;margin:16px 0;flex-wrap:wrap}
+.agents{display:flex;gap:11px;flex-wrap:wrap;margin:16px 0 4px}
+.agent{cursor:pointer;background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:13px 20px;min-width:112px;text-align:center;transition:.15s;font-family:inherit}
+.agent:hover{border-color:var(--brand);transform:translateY(-1px);box-shadow:0 4px 14px rgba(31,43,58,.08)}
+.agent.active{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 4px 14px rgba(31,95,91,.25)}
+.agent .an{font-size:14px;font-weight:800;display:block}
+.agent .ac{font-size:11.5px;font-weight:600;color:var(--soft);margin-top:3px;display:block}
+.agent.active .ac{color:rgba(255,255,255,.85)}
+.agent .arej{display:inline-block;font-size:10px;font-weight:700;color:var(--rej);background:var(--rejsoft);border-radius:999px;padding:1px 7px;margin-top:4px}
+.agent.active .arej{background:rgba(255,255,255,.22);color:#fff}
 .tools select,.tools input{font-family:inherit;font-size:13.5px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
 .refresh{margin-inline-start:auto;background:var(--brand);color:#fff;border:none;border-radius:10px;padding:8px 15px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
 .count{font-size:12.5px;color:var(--soft)}
@@ -908,6 +917,7 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
 </div></header>
 <div class="wrap">
   <div id="rejbar" class="rejbar"></div>
+  <div class="agents" id="agents"></div>
   <div class="tools">
     <select id="fstatus" onchange="render()">
       <option value="">كل الحالات</option>
@@ -951,10 +961,36 @@ var DATA=[];
 var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض"};
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function load(){fetch(API).then(function(r){return r.json()}).then(function(d){DATA=Array.isArray(d)?d:[];render()}).catch(function(){})}
+var CURAGENT="";  // "" = الكل
+function setAgent(a){CURAGENT=a;renderAgents();render()}
+function renderAgents(){
+  var names=["في","مروة","أميرة"];
+  // include any other assignee that appears in the data
+  DATA.forEach(function(x){
+    var a=(x.assignee||"").trim();
+    if(a && names.indexOf(a)<0) names.push(a);
+  });
+  var box=document.getElementById("agents");
+  if(!box)return;
+  var html='<button class="agent'+(CURAGENT===""?" active":"")+'" onclick="setAgent(\'\')">'+
+    '<span class="an">الكل</span><span class="ac">'+DATA.length+' طلب</span></button>';
+  names.forEach(function(n){
+    var mine=DATA.filter(function(x){return (x.assignee||"").trim()===n});
+    var rej=mine.filter(function(x){return x.status==="rejected"}).length;
+    html+='<button class="agent'+(CURAGENT===n?" active":"")+'" onclick="setAgent(\''+esc(n).replace(/'/g,"\\'")+'\')">'+
+      '<span class="an">'+esc(n)+'</span>'+
+      '<span class="ac">'+mine.length+' طلب</span>'+
+      (rej?'<span class="arej">'+rej+' مرفوض</span>':'')+
+    '</button>';
+  });
+  box.innerHTML=html;
+}
 function render(){
+  renderAgents();
   var st=document.getElementById("fstatus").value;
   var q=document.getElementById("fsearch").value.trim().toLowerCase();
   var list=DATA.filter(function(x){
+    if(CURAGENT && (x.assignee||"").trim()!==CURAGENT)return false;
     if(st&&x.status!==st)return false;
     if(q){var h=((x.customer_name||"")+" "+(x.conversation_id||"")+" "+(x.order_number||"")).toLowerCase();if(h.indexOf(q)<0)return false}
     return true;
