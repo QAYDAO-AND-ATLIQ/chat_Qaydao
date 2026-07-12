@@ -186,8 +186,12 @@ async def create_or_update(body: ReturnIn):
     async with p.acquire() as c:
         existing = None
         if body.conversation_id is not None:
+            # Only reuse an OPEN request. Closed ones (rejected/done) are final and archived —
+            # a re-submission for the same conversation creates a brand-new request.
             existing = await c.fetchrow(
-                "SELECT id FROM return_requests WHERE conversation_id=$1 ORDER BY id DESC LIMIT 1",
+                """SELECT id FROM return_requests
+                    WHERE conversation_id=$1 AND status NOT IN ('rejected','done')
+                    ORDER BY id DESC LIMIT 1""",
                 body.conversation_id,
             )
         rc = _parse_date(body.return_created_at)
@@ -258,9 +262,22 @@ async def set_status(rid: int, body: StatusIn, returns_session: Optional[str] = 
         raise HTTPException(400, "سبب الرفض مطلوب عند اختيار مرفوض")
     p = await pool()
     async with p.acquire() as c:
-        r = await c.fetchrow("SELECT status_history FROM return_requests WHERE id=$1", rid)
+        r = await c.fetchrow("SELECT status, status_history, receipt_path FROM return_requests WHERE id=$1", rid)
         if not r:
             raise HTTPException(404, "not found")
+        # A rejected request is FINAL — it can never be reopened or changed.
+        # The agent must submit a brand-new return request from Chatwoot.
+        if r["status"] == "rejected":
+            raise HTTPException(
+                409,
+                "هذا الطلب مرفوض نهائياً ولا يمكن تغيير حالته. يجب على خدمة العملاء رفع طلب إرجاع جديد.",
+            )
+        # 'تم الإرجاع' requires the transfer receipt to be attached first.
+        if body.status == "done" and not r["receipt_path"]:
+            raise HTTPException(
+                400,
+                "يجب إرفاق إيصال التحويل (PDF أو صورة) قبل تحويل الطلب إلى: تم الإرجاع.",
+            )
         hist = r["status_history"]
         if isinstance(hist, str):
             hist = json.loads(hist)
@@ -409,9 +426,11 @@ async def upload_receipt(rid: int, file: UploadFile = File(...), returns_session
 
     p = await pool()
     async with p.acquire() as c:
-        row = await c.fetchrow("SELECT receipt_path FROM return_requests WHERE id=$1", rid)
+        row = await c.fetchrow("SELECT receipt_path, status FROM return_requests WHERE id=$1", rid)
         if not row:
             raise HTTPException(404, "not found")
+        if row["status"] == "rejected":
+            raise HTTPException(409, "هذا الطلب مرفوض نهائياً ولا يمكن إرفاق إيصال له.")
         if row["receipt_path"]:
             try:
                 Path(row["receipt_path"]).unlink(missing_ok=True)
@@ -605,6 +624,10 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .rcpt-has .olink{flex:1;min-width:0;word-break:break-all}
 .rcpt-msg{font-size:11.5px;font-weight:600;margin-top:7px}
 .rcpt-msg.ok{color:var(--ok)}.rcpt-msg.err{color:#c0392b}
+.rcpt-req{font-weight:700;color:#c0392b;font-size:11px}
+.sbtn.needs-rcpt{opacity:.55}
+.locked{margin-top:12px;background:#fdeded;border:1px solid #f3c6c1;border-radius:11px;padding:12px 14px;font-size:12.5px;font-weight:600;color:#c0392b;line-height:1.6}
+.locked span{font-weight:500;color:#8a4038;font-size:11.5px}
 .rejsend{flex:1;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border-radius:9px;padding:9px 6px;border:none;background:#c0392b;color:#fff;transition:.15s}
 .rejsend:hover{background:#a5301f}
 .rejcancel{font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border-radius:9px;padding:9px 14px;border:1px solid var(--line);background:#f8fafb;color:var(--soft)}
@@ -707,26 +730,31 @@ function card(x){
         (x.attachment_name?('<a class="olink" href="/returns/api/requests/'+x.id+'/attachment" target="_blank">\u2B07 '+esc(x.attachment_name)+'</a>'):'—')+
       '</span></div>'+
       (x.reject_reason?('<div class="rowf"><span class="k" style="color:#c0392b">سبب الرفض</span><span class="v" style="color:#c0392b">'+esc(x.reject_reason)+'</span></div>'):'')+
-      '<div class="qd-reject-wrap" id="rejw_'+x.id+'"><div class="qd-note-lbl" style="color:#c0392b">سبب الرفض (إلزامي)</div>'+
-        '<textarea class="qd-note-in" id="rej_'+x.id+'" rows="2" placeholder="اكتب سبب الرفض…">'+esc(x.reject_reason||"")+'</textarea>'+
-        '<div style="display:flex;gap:8px;margin-top:8px">'+
-          '<button class="rejsend" onclick="confirmReject('+x.id+',this)">تأكيد الرفض وإرسال</button>'+
-          '<button class="rejcancel" onclick="cancelReject('+x.id+')">إلغاء</button>'+
-        '</div></div>'+
-      '<div class="rcpt-wrap'+(x.status==="done"?" show":"")+'" id="rcptw_'+x.id+'">'+
-        '<div class="rcpt-head">🧾 إيصال التحويل <span class="rcpt-opt">(اختياري)</span></div>'+
-        (x.receipt_name
-          ? ('<div class="rcpt-has"><a class="olink" href="/returns/api/requests/'+x.id+'/receipt" target="_blank">\u2B07 '+esc(x.receipt_name)+'</a>'+
-             '<label class="rcpt-btn">استبدال<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="display:none" onchange="uploadReceipt('+x.id+',this)"></label></div>')
-          : ('<label class="rcpt-btn rcpt-up">\u2B06 رفع إيصال (PDF أو صورة)<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="display:none" onchange="uploadReceipt('+x.id+',this)"></label>'))+
-        '<div class="rcpt-msg" id="rcptm_'+x.id+'"></div>'+
-      '</div>'+
-      '<div class="sbtns">'+
-        '<button class="sbtn will'+(x.status==="will"?" active":"")+'" onclick="setStatus('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
-        '<button class="sbtn doing'+(x.status==="doing"?" active":"")+'" onclick="setStatus('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+
-        '<button class="sbtn done'+(x.status==="done"?" active":"")+'" onclick="setStatus('+x.id+',\'done\',this)">تم الإرجاع</button>'+
-        '<button class="sbtn rejected'+(x.status==="rejected"?" active":"")+'" onclick="rejectClick('+x.id+',this)">مرفوض</button>'+
-      '</div>'+
+      (x.status==="rejected"
+        ? ('<div class="locked">\uD83D\uDD12 هذا الطلب <b>مرفوض نهائياً</b> ولا يمكن تغيير حالته.<br>'+
+           '<span>لإعادة فتحه يجب على خدمة العملاء رفع طلب إرجاع جديد من الشات.</span></div>')
+        : (
+          '<div class="rcpt-wrap show" id="rcptw_'+x.id+'">'+
+            '<div class="rcpt-head">🧾 إيصال التحويل <span class="rcpt-req">(إلزامي قبل: تم الإرجاع)</span></div>'+
+            (x.receipt_name
+              ? ('<div class="rcpt-has"><a class="olink" href="/returns/api/requests/'+x.id+'/receipt" target="_blank">\u2B07 '+esc(x.receipt_name)+'</a>'+
+                 '<label class="rcpt-btn">استبدال<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="display:none" onchange="uploadReceipt('+x.id+',this)"></label></div>')
+              : ('<label class="rcpt-btn rcpt-up">\u2B06 رفع إيصال (PDF أو صورة)<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="display:none" onchange="uploadReceipt('+x.id+',this)"></label>'))+
+            '<div class="rcpt-msg" id="rcptm_'+x.id+'"></div>'+
+          '</div>'+
+          '<div class="qd-reject-wrap" id="rejw_'+x.id+'"><div class="qd-note-lbl" style="color:#c0392b">سبب الرفض (إلزامي)</div>'+
+            '<textarea class="qd-note-in" id="rej_'+x.id+'" rows="2" placeholder="اكتب سبب الرفض…"></textarea>'+
+            '<div style="display:flex;gap:8px;margin-top:8px">'+
+              '<button class="rejsend" onclick="confirmReject('+x.id+',this)">تأكيد الرفض وإرسال</button>'+
+              '<button class="rejcancel" onclick="cancelReject('+x.id+')">إلغاء</button>'+
+            '</div></div>'+
+          '<div class="sbtns">'+
+            '<button class="sbtn will'+(x.status==="will"?" active":"")+'" onclick="setStatus('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
+            '<button class="sbtn doing'+(x.status==="doing"?" active":"")+'" onclick="setStatus('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+
+            '<button class="sbtn done'+(x.status==="done"?" active":"")+(x.receipt_name?"":" needs-rcpt")+'" onclick="setStatus('+x.id+',\'done\',this)">تم الإرجاع</button>'+
+            '<button class="sbtn rejected" onclick="rejectClick('+x.id+',this)">مرفوض</button>'+
+          '</div>'
+        ))+
       (histRows?'<div class="hist show">'+histRows+'</div>':'')+
     '</div></div>';
 }
@@ -764,6 +792,16 @@ function uploadReceipt(id,input){
     .catch(function(e){m.className="rcpt-msg err";m.textContent=(e&&e.msg)||"تعذّر رفع الإيصال.";input.value=""});
 }
 function setStatus(id,st,btn,rejectReason){
+  if(st==="done"){
+    var rec=DATA.find(function(d){return d.id===id});
+    if(rec&&!rec.receipt_name){
+      toast("يجب إرفاق إيصال التحويل أولاً قبل: تم الإرجاع.");
+      var box=document.getElementById("rcptw_"+id);
+      if(box){box.scrollIntoView({behavior:"smooth",block:"center"});box.style.boxShadow="0 0 0 3px rgba(192,57,43,.35)";
+        setTimeout(function(){box.style.boxShadow=""},1600);}
+      return;
+    }
+  }
   btn.disabled=true;
   var payload={status:st,changed_by:"financial@qaydao.com"};
   if(st==="rejected")payload.reject_reason=rejectReason||"";
