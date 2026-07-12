@@ -393,6 +393,64 @@ async def download_attachment(rid: int, returns_session: Optional[str] = Cookie(
     )
 
 
+@app.post("/returns/api/requests/{rid}/receipt")
+async def upload_receipt(rid: int, file: UploadFile = File(...), returns_session: Optional[str] = Cookie(None)):
+    # Accountant-only: transfer receipt proving the refund was made.
+    if not await current_user(returns_session):
+        raise HTTPException(401, "login required")
+    mime = (file.content_type or "").split(";")[0].strip().lower()
+    if mime not in ALLOWED_MIME:
+        raise HTTPException(400, "نوع ملف غير مسموح. المسموح: PDF, JPG, PNG, WEBP")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(400, "حجم الملف يتجاوز 10 ميجابايت")
+    if not data:
+        raise HTTPException(400, "الملف فارغ")
+
+    p = await pool()
+    async with p.acquire() as c:
+        row = await c.fetchrow("SELECT receipt_path FROM return_requests WHERE id=$1", rid)
+        if not row:
+            raise HTTPException(404, "not found")
+        if row["receipt_path"]:
+            try:
+                Path(row["receipt_path"]).unlink(missing_ok=True)
+            except Exception:
+                pass
+        ext = ALLOWED_MIME[mime]
+        fname = f"receipt_{rid}_{uuid.uuid4().hex}{ext}"
+        fpath = UPLOAD_DIR / fname
+        fpath.write_bytes(data)
+        orig = os.path.basename(file.filename or f"receipt{ext}")
+        r = await c.fetchrow(
+            """UPDATE return_requests
+                 SET receipt_name=$2, receipt_path=$3, receipt_mime=$4
+               WHERE id=$1 RETURNING *""",
+            rid, orig, str(fpath), mime,
+        )
+    return row_to_dict(r)
+
+
+@app.get("/returns/api/requests/{rid}/receipt")
+async def download_receipt(rid: int):
+    # Open: the agent needs it (from the team page) to reply to the customer with proof of transfer.
+    p = await pool()
+    async with p.acquire() as c:
+        r = await c.fetchrow(
+            "SELECT receipt_name, receipt_path, receipt_mime FROM return_requests WHERE id=$1", rid
+        )
+    if not r or not r["receipt_path"]:
+        raise HTTPException(404, "لا يوجد إيصال مرفق")
+    fp = Path(r["receipt_path"])
+    if not fp.exists():
+        raise HTTPException(404, "الملف غير موجود على الخادم")
+    return FileResponse(
+        str(fp),
+        media_type=r["receipt_mime"] or "application/octet-stream",
+        filename=r["receipt_name"] or fp.name,
+    )
+
+
 @app.get("/returns/api/config")
 async def config():
     return {"reasons": REASONS, "assignees": ASSIGNEES, "status_labels": STATUS_LABELS}
@@ -536,6 +594,17 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .qd-reject-wrap{display:none;margin-top:8px}
 .qd-reject-wrap.show{display:block}
 .qd-reject-wrap textarea{border-color:#f3c6c1;background:#fdeded}
+.rcpt-wrap{display:none;margin-top:12px;background:var(--oksoft);border:1px solid #bfe3cd;border-radius:11px;padding:11px 13px}
+.rcpt-wrap.show{display:block}
+.rcpt-head{font-size:12.5px;font-weight:700;color:var(--ok);margin-bottom:8px}
+.rcpt-opt{font-weight:500;color:var(--soft);font-size:11px}
+.rcpt-btn{display:inline-block;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;border-radius:8px;padding:7px 13px;background:#fff;color:var(--ok);border:1px solid #bfe3cd;transition:.15s}
+.rcpt-btn:hover{background:#d9f0e2}
+.rcpt-up{width:100%;text-align:center}
+.rcpt-has{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.rcpt-has .olink{flex:1;min-width:0;word-break:break-all}
+.rcpt-msg{font-size:11.5px;font-weight:600;margin-top:7px}
+.rcpt-msg.ok{color:var(--ok)}.rcpt-msg.err{color:#c0392b}
 .rejsend{flex:1;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border-radius:9px;padding:9px 6px;border:none;background:#c0392b;color:#fff;transition:.15s}
 .rejsend:hover{background:#a5301f}
 .rejcancel{font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border-radius:9px;padding:9px 14px;border:1px solid var(--line);background:#f8fafb;color:var(--soft)}
@@ -644,6 +713,14 @@ function card(x){
           '<button class="rejsend" onclick="confirmReject('+x.id+',this)">تأكيد الرفض وإرسال</button>'+
           '<button class="rejcancel" onclick="cancelReject('+x.id+')">إلغاء</button>'+
         '</div></div>'+
+      '<div class="rcpt-wrap'+(x.status==="done"?" show":"")+'" id="rcptw_'+x.id+'">'+
+        '<div class="rcpt-head">🧾 إيصال التحويل <span class="rcpt-opt">(اختياري)</span></div>'+
+        (x.receipt_name
+          ? ('<div class="rcpt-has"><a class="olink" href="/returns/api/requests/'+x.id+'/receipt" target="_blank">\u2B07 '+esc(x.receipt_name)+'</a>'+
+             '<label class="rcpt-btn">استبدال<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="display:none" onchange="uploadReceipt('+x.id+',this)"></label></div>')
+          : ('<label class="rcpt-btn rcpt-up">\u2B06 رفع إيصال (PDF أو صورة)<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="display:none" onchange="uploadReceipt('+x.id+',this)"></label>'))+
+        '<div class="rcpt-msg" id="rcptm_'+x.id+'"></div>'+
+      '</div>'+
       '<div class="sbtns">'+
         '<button class="sbtn will'+(x.status==="will"?" active":"")+'" onclick="setStatus('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
         '<button class="sbtn doing'+(x.status==="doing"?" active":"")+'" onclick="setStatus('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+
@@ -670,6 +747,22 @@ function confirmReject(id,btn){
   if(!reason){if(rej)rej.focus();toast("سبب الرفض مطلوب قبل الإرسال.");return}
   setStatus(id,"rejected",btn,reason);
 }
+function uploadReceipt(id,input){
+  var f=(input&&input.files&&input.files.length)?input.files[0]:null;
+  var m=document.getElementById("rcptm_"+id);
+  if(!f)return;
+  if(f.size>10*1024*1024){m.className="rcpt-msg err";m.textContent="حجم الملف يتجاوز 10 ميجابايت.";input.value="";return}
+  m.className="rcpt-msg";m.textContent="جارٍ رفع الإيصال…";
+  var fd=new FormData();fd.append("file",f);
+  fetch(API+"/"+id+"/receipt",{method:"POST",credentials:"same-origin",body:fd})
+    .then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||"تعذّر رفع الإيصال"}});return r.json()})
+    .then(function(u){
+      toast("تم رفع إيصال التحويل ✓");
+      var i=DATA.findIndex(function(d){return d.id===id});if(i>=0)DATA[i]=u;
+      render();
+    })
+    .catch(function(e){m.className="rcpt-msg err";m.textContent=(e&&e.msg)||"تعذّر رفع الإيصال.";input.value=""});
+}
 function setStatus(id,st,btn,rejectReason){
   btn.disabled=true;
   var payload={status:st,changed_by:"financial@qaydao.com"};
@@ -678,7 +771,7 @@ function setStatus(id,st,btn,rejectReason){
     .then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||0}});return r.json()})
     .then(function(u){
       var msg;
-      if(st==="done")msg="تم إتمام الإرجاع وتسجيل تاريخ ووقت العملية.";
+      if(st==="done")msg="تم إتمام الإرجاع ✓ يمكنك الآن رفع إيصال التحويل (اختياري).";
       else if(st==="rejected")msg="تم رفض الطلب وتسجيل السبب. سيظهر التنبيه للموظف.";
       else msg="تم تحديث الحالة إلى: "+SL[st]+". المدة المتوقعة للتحويل من ٧ إلى ١٤ يوم.";
       toast(msg);
@@ -702,7 +795,7 @@ async def team_requests():
         rows = await c.fetch(
             """SELECT id, conversation_id, customer_name, order_number, reason,
                       status, accountant_note, reject_reason, assignee,
-                      return_created_at, updated_at
+                      receipt_name, return_created_at, updated_at
                  FROM return_requests ORDER BY id DESC LIMIT 300"""
         )
     out = []
@@ -763,6 +856,8 @@ tr.rejrow{background:var(--rejsoft)}
 .b-doing{background:var(--infosoft);color:var(--info)}.b-done{background:var(--oksoft);color:var(--ok)}
 .b-rejected{background:var(--rejsoft);color:var(--rej)}
 .note{color:var(--ink)}.rej{color:var(--rej);font-weight:700}
+.rcpt-dl{color:var(--ok);font-weight:700;text-decoration:none;white-space:nowrap;background:var(--oksoft);border:1px solid #bfe3cd;border-radius:7px;padding:3px 9px;font-size:11.5px;display:inline-block}
+.rcpt-dl:hover{background:#d9f0e2}
 .empty{text-align:center;color:var(--soft);padding:50px 20px;font-size:15px;display:none}
 footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
 @media(max-width:720px){th:nth-child(3),td:nth-child(3){display:none}}
@@ -790,7 +885,7 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
     <table>
       <thead><tr>
         <th>رقم المحادثة</th><th>العميل</th><th>رقم الطلب</th><th>سبب الإرجاع</th>
-        <th>الحالة</th><th>ملاحظة المحاسب</th><th>سبب الرفض</th><th>الموظف</th>
+        <th>الحالة</th><th>ملاحظة المحاسب</th><th>سبب الرفض</th><th>إيصال التحويل</th><th>الموظف</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -846,6 +941,7 @@ function row(x){
     '<td><span class="badge b-'+esc(x.status)+'">'+esc(SL[x.status]||x.status)+'</span></td>'+
     '<td class="note">'+esc(x.accountant_note||"—")+'</td>'+
     '<td class="'+(rej?"rej":"")+'">'+(rej?(esc(x.reject_reason||"—")+'<br><span style="font-size:11px">\u26A0 تواصل مع المحاسب بالإيميل</span>'):'—')+'</td>'+
+    '<td>'+(x.receipt_name?('<a class="rcpt-dl" href="/returns/api/requests/'+x.id+'/receipt" target="_blank">\u2B07 تحميل الإيصال</a>'):'—')+'</td>'+
     '<td>'+esc(x.assignee||"—")+'</td>'+
   '</tr>';
 }

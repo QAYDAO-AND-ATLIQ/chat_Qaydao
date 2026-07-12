@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS return_requests (
     status_history    JSONB NOT NULL DEFAULT '[]'::jsonb,
     accountant_note   TEXT,
     reject_reason     TEXT,
+    receipt_name      TEXT,
+    receipt_path      TEXT,
+    receipt_mime      TEXT,
     created_by        TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
