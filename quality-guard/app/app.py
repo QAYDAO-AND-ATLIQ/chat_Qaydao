@@ -476,11 +476,16 @@ async def _greeting_should_check(conv_id, message_id):
 
     # is THIS message the first human (User) agent outgoing reply in the conversation?
     first_human = None
+    ai_engaged = False  # Captain/AgentBot spoke publicly to the customer before the first human reply
     for m in payload:
         if m.get("message_type") == 1 and not m.get("private"):
             st = (m.get("sender_type") or (m.get("sender") or {}).get("type") or "")
             sid = (m.get("sender") or {}).get("id")
             sname = ((m.get("sender") or {}).get("name") or "").strip().lower()
+            if str(st).lower() in ("captain_assistant", "captain::assistant", "agent_bot", "agentbot") \
+               or sname in ("qaydao ai", "captain"):
+                ai_engaged = True
+                continue
             if st in ("user", "User") and sid not in (14, 2) and sname not in ("qaydao ai", "qaydao admin", "captain", "bot"):
                 # the approved outreach template is not a service reply -> skip it,
                 # so the first SUBSTANTIVE human reply is the one evaluated for greeting
@@ -497,6 +502,10 @@ async def _greeting_should_check(conv_id, message_id):
             await _record_first_reply(conv_id, first_human.get("id"))
         return False
     await _record_first_reply(conv_id, message_id)
+    # قرار 2026-07-12: إن رحّب Captain بالعميل علنياً قبل أول رد بشري، يُعفى الموظف
+    # من الترحيب — انضم لمحادثة جارية افتتحها الذكاء الاصطناعي، لا يُطالب بترحيب ثانٍ.
+    if ai_engaged:
+        return False
     return True
 
 
@@ -629,6 +638,14 @@ async def _handle_resolved(conv):
             s = m.get("sender") or {}
             st = (m.get("sender_type") or s.get("type") or "")
             sname = (s.get("name") or "").strip().lower()
+            # قرار 2026-07-12: يُقيَّم الموظف على رسالة الإغلاق فقط إن كان هو المُغلق
+            # الفعلي. آخر رسالة علنية من Captain/AgentBot => الإغلاق آلي، ولا يُحاكم
+            # موظف على رسالة وسطية كتبها قبل ساعات (حُوكمت رسالة عمرها 68 يوماً كإغلاق).
+            # API identity is snake_case (captain_assistant); DB form kept as fallback.
+            if str(st).lower() in ("captain_assistant", "captain::assistant", "agent_bot", "agentbot") \
+               or sname in ("qaydao ai", "captain"):
+                await _mark_closing_checked(conv_id)
+                return {"skip": "ai_closed"}
             if st not in ("user", "User"):
                 continue
             if s.get("id") in (14, 2) or sname in ("qaydao ai", "qaydao admin", "captain", "bot") or (s.get("email") or "").strip().lower() == "admin@qaydao.com":
