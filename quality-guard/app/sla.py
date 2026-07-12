@@ -16,6 +16,7 @@ except Exception:
     _RIYADH = datetime.timezone(datetime.timedelta(hours=3))
 
 SLA_MINUTES = int(os.environ.get("QG_FIRST_RESPONSE_SLA_MIN", "5"))
+HANDOFF_SLA_MINUTES = int(os.environ.get("QG_HANDOFF_SLA_MIN", "15"))
 
 
 async def _sla_minutes():
@@ -23,6 +24,11 @@ async def _sla_minutes():
     env value stays as the fallback so dropping the table restores old behavior."""
     import admin
     return await admin.get_alert_type_threshold("first_response_delay", SLA_MINUTES)
+
+
+async def _handoff_sla_minutes():
+    import admin
+    return await admin.get_alert_type_threshold("handoff_response_delay", HANDOFF_SLA_MINUTES)
 WORK_START_H = 9
 WORK_END_H = 20
 # Python weekday(): Mon=0..Sun=6. Friday=4 is OFF. Sat=5..Thu=3 are working.
@@ -69,12 +75,51 @@ async def on_customer_message(pool, conv: dict, msg: dict):
 
 
 async def on_agent_reply(pool, conv_id):
-    """Agent replied -> clear the pending timer."""
+    """Any public reply that reaches the customer (human OR AI) -> clear the pending timer."""
     if not conv_id:
         return
     p = await pool()
     async with p.acquire() as c:
         await c.execute("DELETE FROM qg_pending_response WHERE conversation_id=$1", conv_id)
+
+
+async def on_handoff(pool, conv: dict, msg: dict):
+    """Captain handed the conversation to the human team (structural signal:
+    its private 'Auto-handoff:' note) -> start the handoff clock.
+    Only a human public reply clears it; another Captain reply does NOT."""
+    if not in_working_hours(now_utc()):
+        return
+    conv_id = conv.get("id") or msg.get("conversation_id")
+    if not conv_id:
+        return
+    meta = conv.get("meta") or {}
+    assignee = meta.get("assignee") or {}
+    waiting = now_utc()
+    due = waiting + datetime.timedelta(minutes=await _handoff_sla_minutes())
+    p = await pool()
+    async with p.acquire() as c:
+        existing = await c.fetchval(
+            "SELECT 1 FROM qg_pending_handoff WHERE conversation_id=$1 AND NOT alerted", conv_id)
+        if existing:
+            return
+        await c.execute("""
+            INSERT INTO qg_pending_handoff
+              (conversation_id, account_id, inbox_id, channel_type, assignee_id, assignee_name, assignee_email, waiting_since, due_at, alerted)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,FALSE)
+            ON CONFLICT (conversation_id) DO UPDATE SET
+              waiting_since=EXCLUDED.waiting_since, due_at=EXCLUDED.due_at, alerted=FALSE,
+              assignee_id=EXCLUDED.assignee_id, assignee_name=EXCLUDED.assignee_name, assignee_email=EXCLUDED.assignee_email
+        """, conv_id, conv.get("account_id"), conv.get("inbox_id"), (conv.get("channel") or ""),
+             assignee.get("id"), assignee.get("name"), assignee.get("email"), waiting, due)
+
+
+async def on_human_reply_after_handoff(pool, conv_id):
+    """A real human agent replied publicly -> clear the handoff timer."""
+    if not conv_id:
+        return
+    p = await pool()
+    async with p.acquire() as c:
+        await c.execute("DELETE FROM qg_pending_handoff WHERE conversation_id=$1", conv_id)
 
 
 async def sweep_overdue(pool, store_alert, post_note):
@@ -119,6 +164,43 @@ async def sweep_overdue(pool, store_alert, post_note):
                     await post_note(r["conversation_id"], note)
             finally:
                 await c.execute("UPDATE qg_pending_response SET alerted=TRUE WHERE conversation_id=$1", r["conversation_id"])
+
+        # ---- post-handoff SLA: Captain handed off, no human replied in time ----
+        hrows = await c.fetch(
+            "SELECT * FROM qg_pending_handoff WHERE NOT alerted AND due_at <= now()")
+        for r in hrows:
+            if not in_working_hours(now_utc()):
+                continue
+            rec = {
+                "account_id": r["account_id"] or 1,
+                "conversation_id": r["conversation_id"],
+                "message_id": None,
+                "inbox_id": r["inbox_id"],
+                "user_id": r["assignee_id"],
+                "employee_name": r["assignee_name"],
+                "employee_email": r["assignee_email"],
+                "channel_type": r["channel_type"],
+                "alert_type": "handoff_response_delay",
+                "severity": "medium",
+                "message_type": None,
+                "message_direction": "to_customer",
+                "is_private": False,
+                "message_snippet": None,
+                "ai_reason": "حوّل الذكاء الاصطناعي المحادثة للفريق ولم يرد أي موظف على العميل خلال المهلة المحددة.",
+                "suggested_correction": "يرجى الرد على العميل فوراً — المحادثة محوّلة من QAYDAO AI وتنتظر تدخلاً بشرياً.",
+                "policy_reference": "Section 5",
+                "matched_rule": "handoff_sla",
+            }
+            try:
+                aid = await store_alert(rec)
+                if aid is not None:
+                    note = ("🛡️ تنبيه جودة داخلي (Quality Guard)\n"
+                            f"النوع: handoff_response_delay | الخطورة: {rec['severity']}\n"
+                            f"السبب: {rec['ai_reason']}\n"
+                            f"الإجراء: {rec['suggested_correction']}")
+                    await post_note(r["conversation_id"], note)
+            finally:
+                await c.execute("UPDATE qg_pending_handoff SET alerted=TRUE WHERE conversation_id=$1", r["conversation_id"])
 
 
 async def background_loop(pool, store_alert, post_note, interval=30):

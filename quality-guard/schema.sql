@@ -66,6 +66,22 @@ CREATE TABLE IF NOT EXISTS qg_pending_response (
 );
 CREATE INDEX IF NOT EXISTS idx_qg_pending_due ON qg_pending_response (due_at) WHERE NOT alerted;
 
+-- Post-handoff SLA timer (migration 002): started by Captain's private
+-- "Auto-handoff:" note; cleared ONLY by a public human agent reply.
+CREATE TABLE IF NOT EXISTS qg_pending_handoff (
+    conversation_id      INTEGER PRIMARY KEY,
+    account_id           INTEGER,
+    inbox_id             INTEGER,
+    channel_type         TEXT,
+    assignee_id          INTEGER,
+    assignee_name        TEXT,
+    assignee_email       TEXT,
+    waiting_since        TIMESTAMPTZ,
+    due_at               TIMESTAMPTZ,
+    alerted              BOOLEAN DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS idx_qg_pending_handoff_due ON qg_pending_handoff (due_at) WHERE NOT alerted;
+
 -- Section 1: official policy source-of-truth (manual entry / future Salla sync)
 CREATE TABLE IF NOT EXISTS qg_policies (
     id                BIGSERIAL PRIMARY KEY,

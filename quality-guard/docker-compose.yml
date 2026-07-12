@@ -23,6 +23,10 @@ services:
     restart: unless-stopped
     env_file:
       - ./.env
+    environment:
+      # Inboxes fully invisible to QG (7 = 🚨 تنبيهات النظام / Auto-monitor).
+      # Comma-separated; extend without a rebuild (recreate container only).
+      QG_EXCLUDED_INBOXES: "7"
     depends_on:
       - quality_guard_db
     networks:

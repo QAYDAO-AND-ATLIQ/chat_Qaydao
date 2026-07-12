@@ -24,6 +24,9 @@ CHATWOOT_ACCOUNT = int(os.environ.get("CHATWOOT_ACCOUNT_ID", "1"))
 BOT_TOKEN        = os.environ.get("CHATWOOT_BOT_TOKEN", "")
 WEBHOOK_SECRET   = os.environ.get("QG_WEBHOOK_SECRET", "")
 POST_ALERTS      = os.environ.get("QG_POST_ALERTS", "false").lower() == "true"  # gate: stays false until Step 5
+# Inboxes fully invisible to Quality Guard (system/monitoring inboxes, e.g. 7 = 🚨 تنبيهات النظام).
+# Comma-separated ids, set in docker-compose — extendable without a rebuild.
+EXCLUDED_INBOXES = {int(x) for x in os.environ.get("QG_EXCLUDED_INBOXES", "").replace(" ", "").split(",") if x}
 
 app = FastAPI(title="QAYDAO Quality Guard")
 report_ui.bind_pool(lambda: pool())
@@ -141,6 +144,15 @@ async def webhook(request: Request, secret: str = Query(default="")):
     body = await request.json()
     event = body.get("event")
 
+    # ---- excluded inboxes (monitoring/system) -> fully invisible to QG ----
+    _conv_probe = body.get("conversation") or body
+    _inbox_probe = _conv_probe.get("inbox_id") or (body.get("inbox") or {}).get("id")
+    try:
+        if _inbox_probe is not None and int(_inbox_probe) in EXCLUDED_INBOXES:
+            return {"skip": "excluded_inbox", "inbox_id": int(_inbox_probe)}
+    except (TypeError, ValueError):
+        pass
+
     # ---- conversation status changed -> only act when resolved ----
     if event == "conversation_status_changed":
         conv = body.get("conversation") or body
@@ -165,6 +177,28 @@ async def webhook(request: Request, secret: str = Query(default="")):
     # Captain, bots) is excluded from Quality Guard entirely.
     HUMAN_TYPES = ("user", "User")
     BOT_USER_IDS = {14, 2}  # 14=Quality Guard bot, 2=QAYDAO Admin (system-alerts account, not an agent)
+
+    # ---- SLA clocks (رامي's decision 2026-07-12) ----
+    # Any PUBLIC OUTGOING message that actually reaches the customer stops the
+    # first-response clock — human or AI alike. Excluded: private notes, the QG
+    # bot itself (id=14), activity/template system messages (not "outgoing").
+    # The post-handoff clock is stricter: only a real human agent clears it.
+    _is_outgoing = (str(_mt).lower() == "outgoing") or (_mt == 1)
+    _is_public = not bool(msg.get("private"))
+    _sender_id = (msg.get("sender") or {}).get("id")
+    _conv_id_early = conv.get("id") or msg.get("conversation_id")
+    _is_qg_bot = (sender_type in HUMAN_TYPES and _sender_id == 14)
+    if _is_outgoing and _is_public and not _is_qg_bot:
+        await sla.on_agent_reply(pool, _conv_id_early)
+        if sender_type in HUMAN_TYPES and _sender_id not in BOT_USER_IDS:
+            await sla.on_human_reply_after_handoff(pool, _conv_id_early)
+
+    # Captain handed off to the human team -> start the handoff clock.
+    # Structural signal (its own private note), no Arabic-text matching.
+    if (str(sender_type) == "Captain::Assistant" and bool(msg.get("private"))
+            and str(msg.get("content") or "").lstrip().startswith("Auto-handoff:")):
+        await sla.on_handoff(pool, conv, msg)
+
     if sender_type not in HUMAN_TYPES:
         # customer (incoming) message -> SLA timer + customer-abuse check; bots -> ignore
         if _is_customer and not bool(msg.get("private")):
@@ -207,9 +241,7 @@ async def webhook(request: Request, secret: str = Query(default="")):
     conv_id = conv.get("id") or msg.get("conversation_id")
     # enrich the conversation sidebar with client IP / city / country (idempotent, best-effort)
     asyncio.create_task(_enrich_client_info(conv_id))
-    # agent (human, not the QG bot) external reply clears the first-response timer
-    if not is_priv and sender.get("id") != 14:
-        await sla.on_agent_reply(pool, conv_id)
+    # (first-response + handoff timers are cleared earlier, in the unified SLA-clocks block)
 
     base = {
         "account_id": conv.get("account_id") or CHATWOOT_ACCOUNT,
@@ -291,6 +323,7 @@ ALERT_TYPE_AR = {
     "missing_closing_check": "\u0646\u0642\u0635 \u062e\u062a\u0627\u0645",
     "missing_rating_close": "\u0646\u0642\u0635 \u0637\u0644\u0628 \u062a\u0642\u064a\u064a\u0645",
     "first_response_delay": "\u062a\u0623\u062e\u0631 \u0627\u0644\u0631\u062f \u0627\u0644\u0623\u0648\u0644\u064a",
+    "handoff_response_delay": "\u062a\u0623\u062e\u0631 \u0627\u0644\u0631\u062f \u0628\u0639\u062f \u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a",
     "official_policy_mismatch": "\u0645\u062e\u0627\u0644\u0641\u0629 \u0633\u064a\u0627\u0633\u0629 \u0631\u0633\u0645\u064a\u0629",
     "customer_abuse": "\u0625\u0633\u0627\u0621\u0629 \u0645\u0646 \u0627\u0644\u0639\u0645\u064a\u0644",
     "excessive_internal_notes": "\u0643\u062b\u0631\u0629 \u0627\u0644\u0645\u0644\u0627\u062d\u0638\u0627\u062a \u0627\u0644\u062f\u0627\u062e\u0644\u064a\u0629",
