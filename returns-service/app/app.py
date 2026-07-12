@@ -578,6 +578,9 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
 .tab .cnt{font-size:11px;font-weight:700;background:rgba(0,0,0,.12);border-radius:999px;padding:1px 7px;min-width:18px;text-align:center}
 .tab.active .cnt{background:rgba(255,255,255,.28)}
+.tab-old{border-style:dashed;color:#8a92a0}
+.tab-old:hover{border-color:#8a92a0;color:#5a6b7d}
+.tab-old.active{background:#5a6b7d;border-color:#5a6b7d;border-style:solid;color:#fff}
 .refresh{margin-inline-start:auto;background:var(--brand);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
 .count{font-size:12.5px;color:var(--soft)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
@@ -649,9 +652,13 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
 </div></header>
 <div class="wrap">
   <div class="tabs" id="tabs">
-    <button class="tab active" data-tab="active" onclick="setTab('active',this)">النشطة <span class="cnt" id="cnt-active">0</span></button>
+    <button class="tab active" data-tab="new" onclick="setTab('new',this)">جديدة <span class="cnt" id="cnt-new">0</span></button>
+    <button class="tab" data-tab="will" onclick="setTab('will',this)">سيتم الإرجاع <span class="cnt" id="cnt-will">0</span></button>
+    <button class="tab" data-tab="doing" onclick="setTab('doing',this)">جاري الإرجاع <span class="cnt" id="cnt-doing">0</span></button>
     <button class="tab" data-tab="done" onclick="setTab('done',this)">تم الإرجاع <span class="cnt" id="cnt-done">0</span></button>
     <button class="tab" data-tab="rejected" onclick="setTab('rejected',this)">مرفوض <span class="cnt" id="cnt-rejected">0</span></button>
+    <button class="tab tab-old" data-tab="old_done" onclick="setTab('old_done',this)">قديمة — تم الإرجاع <span class="cnt" id="cnt-old_done">0</span></button>
+    <button class="tab tab-old" data-tab="old_rejected" onclick="setTab('old_rejected',this)">قديمة — مرفوضة <span class="cnt" id="cnt-old_rejected">0</span></button>
     <button class="tab" data-tab="all" onclick="setTab('all',this)">الكل <span class="cnt" id="cnt-all">0</span></button>
   </div>
   <div class="tools">
@@ -672,7 +679,24 @@ function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){retu
 function toast(m){var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},2200)}
 function copy(v,btn){navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textContent="تم ✓";btn.classList.add("ok");setTimeout(function(){btn.textContent=o;btn.classList.remove("ok")},1400)})}
 function load(){fetch(API,{credentials:"same-origin"}).then(function(r){if(r.status===401){location.href="/accountant-login";return null}return r.json()}).then(function(d){if(d===null)return;DATA=Array.isArray(d)?d:[];render()}).catch(function(){document.getElementById("live").textContent="● غير متصل";document.getElementById("live").style.color="#c0392b"})}
-var CURTAB="active";
+var CURTAB="new";
+var OLD_DAYS=7;  // "قديمة" = مضى أكثر من 7 أيام على إغلاق الطلب (آخر تغيير حالة)
+function closedAt(x){
+  // use the timestamp of the LAST status change (status_history), falling back to updated_at
+  var h=x.status_history;
+  if(h&&h.length){
+    var last=h[h.length-1];
+    if(last&&last.at)return last.at;
+  }
+  return x.updated_at||x.created_at;
+}
+function isOld(x){
+  var t=closedAt(x);
+  if(!t)return false;
+  var d=new Date(t);
+  if(isNaN(d))return false;
+  return (Date.now()-d.getTime()) > OLD_DAYS*86400000;
+}
 function setTab(t,btn){
   CURTAB=t;
   var tabs=document.querySelectorAll("#tabs .tab");
@@ -681,19 +705,33 @@ function setTab(t,btn){
   render();
 }
 function inTab(x){
-  if(CURTAB==="all")return true;
-  if(CURTAB==="active")return (x.status==="new"||x.status==="will"||x.status==="doing");
-  return x.status===CURTAB; // done | rejected
+  switch(CURTAB){
+    case "all":          return true;
+    case "new":          return x.status==="new";
+    case "will":         return x.status==="will";
+    case "doing":        return x.status==="doing";
+    case "done":         return x.status==="done"     && !isOld(x);
+    case "rejected":     return x.status==="rejected" && !isOld(x);
+    case "old_done":     return x.status==="done"     &&  isOld(x);
+    case "old_rejected": return x.status==="rejected" &&  isOld(x);
+    default:             return true;
+  }
 }
 function updateCounts(){
-  var a=0,d=0,r=0;
+  var c={new:0,will:0,doing:0,done:0,rejected:0,old_done:0,old_rejected:0};
   DATA.forEach(function(x){
-    if(x.status==="done")d++;
-    else if(x.status==="rejected")r++;
-    else a++;
+    var old=isOld(x);
+    if(x.status==="new")c.new++;
+    else if(x.status==="will")c.will++;
+    else if(x.status==="doing")c.doing++;
+    else if(x.status==="done"){ old?c.old_done++:c.done++; }
+    else if(x.status==="rejected"){ old?c.old_rejected++:c.rejected++; }
   });
   var set=function(id,n){var e=document.getElementById(id);if(e)e.textContent=n};
-  set("cnt-active",a);set("cnt-done",d);set("cnt-rejected",r);set("cnt-all",DATA.length);
+  set("cnt-new",c.new);set("cnt-will",c.will);set("cnt-doing",c.doing);
+  set("cnt-done",c.done);set("cnt-rejected",c.rejected);
+  set("cnt-old_done",c.old_done);set("cnt-old_rejected",c.old_rejected);
+  set("cnt-all",DATA.length);
 }
 function render(){
   updateCounts();
