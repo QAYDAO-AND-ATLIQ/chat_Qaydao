@@ -634,6 +634,10 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .rejsend{flex:1;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border-radius:9px;padding:9px 6px;border:none;background:#c0392b;color:#fff;transition:.15s}
 .rejsend:hover{background:#a5301f}
 .rejcancel{font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border-radius:9px;padding:9px 14px;border:1px solid var(--line);background:#f8fafb;color:var(--soft)}
+.pick-lbl{font-size:11.5px;font-weight:600;color:var(--soft);margin:14px 0 8px;text-align:center}
+.sendbtn{width:100%;margin-top:11px;font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer;border:none;border-radius:11px;padding:12px;background:var(--brand);color:#fff;transition:.15s}
+.sendbtn:hover:not(:disabled){background:var(--brandink)}
+.sendbtn:disabled{background:#e4e9ee;color:#a3adb8;cursor:not-allowed}
 .hist{margin-top:11px;font-size:11.5px;color:var(--soft);background:#f8fafb;border-radius:9px;padding:9px 11px;display:none}
 .hist.show{display:block}
 .hist b{color:var(--ink)}
@@ -772,47 +776,56 @@ function card(x){
         ? ('<div class="locked">\uD83D\uDD12 هذا الطلب <b>مرفوض نهائياً</b> ولا يمكن تغيير حالته.<br>'+
            '<span>لإعادة فتحه يجب على خدمة العملاء رفع طلب إرجاع جديد من الشات.</span></div>')
         : (
-          '<div class="rcpt-wrap show" id="rcptw_'+x.id+'">'+
-            '<div class="rcpt-head">🧾 إيصال التحويل <span class="rcpt-req">(إلزامي قبل: تم الإرجاع)</span></div>'+
+          '<div class="pick-lbl">اختر الحالة الجديدة ثم اضغط إرسال</div>'+
+          '<div class="sbtns" id="sb_'+x.id+'">'+
+            '<button class="sbtn will" data-st="will" onclick="pick('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
+            '<button class="sbtn doing" data-st="doing" onclick="pick('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+
+            '<button class="sbtn done" data-st="done" onclick="pick('+x.id+',\'done\',this)">تم الإرجاع</button>'+
+            '<button class="sbtn rejected" data-st="rejected" onclick="pick('+x.id+',\'rejected\',this)">مرفوض</button>'+
+          '</div>'+
+          // receipt box — hidden until "تم الإرجاع" is picked
+          '<div class="rcpt-wrap" id="rcptw_'+x.id+'">'+
+            '<div class="rcpt-head">🧾 إيصال التحويل <span class="rcpt-req">(إلزامي)</span></div>'+
             (x.receipt_name
               ? ('<div class="rcpt-has"><a class="olink" href="/returns/api/requests/'+x.id+'/receipt" target="_blank">\u2B07 '+esc(x.receipt_name)+'</a>'+
                  '<label class="rcpt-btn">استبدال<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="display:none" onchange="uploadReceipt('+x.id+',this)"></label></div>')
               : ('<label class="rcpt-btn rcpt-up">\u2B06 رفع إيصال (PDF أو صورة)<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="display:none" onchange="uploadReceipt('+x.id+',this)"></label>'))+
             '<div class="rcpt-msg" id="rcptm_'+x.id+'"></div>'+
           '</div>'+
-          '<div class="qd-reject-wrap" id="rejw_'+x.id+'"><div class="qd-note-lbl" style="color:#c0392b">سبب الرفض (إلزامي)</div>'+
+          // reject reason box — hidden until "مرفوض" is picked
+          '<div class="qd-reject-wrap" id="rejw_'+x.id+'">'+
+            '<div class="qd-note-lbl" style="color:#c0392b">سبب الرفض (إلزامي)</div>'+
             '<textarea class="qd-note-in" id="rej_'+x.id+'" rows="2" placeholder="اكتب سبب الرفض…"></textarea>'+
-            '<div style="display:flex;gap:8px;margin-top:8px">'+
-              '<button class="rejsend" onclick="confirmReject('+x.id+',this)">تأكيد الرفض وإرسال</button>'+
-              '<button class="rejcancel" onclick="cancelReject('+x.id+')">إلغاء</button>'+
-            '</div></div>'+
-          '<div class="sbtns">'+
-            '<button class="sbtn will'+(x.status==="will"?" active":"")+'" onclick="setStatus('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
-            '<button class="sbtn doing'+(x.status==="doing"?" active":"")+'" onclick="setStatus('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+
-            '<button class="sbtn done'+(x.status==="done"?" active":"")+(x.receipt_name?"":" needs-rcpt")+'" onclick="setStatus('+x.id+',\'done\',this)">تم الإرجاع</button>'+
-            '<button class="sbtn rejected" onclick="rejectClick('+x.id+',this)">مرفوض</button>'+
-          '</div>'
+          '</div>'+
+          '<button class="sendbtn" id="send_'+x.id+'" disabled onclick="submitStatus('+x.id+',this)">إرسال</button>'
         ))+
       (histRows?'<div class="hist show">'+histRows+'</div>':'')+
     '</div></div>';
 }
 function orderClick(n){toast("رقم الطلب "+n+" — الربط مع سلة سيُفعّل لاحقاً.");return false}
-function rejectClick(id,btn){
-  var wrap=document.getElementById("rejw_"+id);
-  var rej=document.getElementById("rej_"+id);
-  if(wrap){wrap.classList.add("show");if(rej)rej.focus();}
-  toast("اكتب سبب الرفض ثم اضغط \u0022تأكيد الرفض وإرسال\u0022.");
+
+/* --- selection model: pick a status, fill what it needs, then press إرسال --- */
+var PICKED={};   // {requestId: "will"|"doing"|"done"|"rejected"}
+
+function pick(id,st,btn){
+  PICKED[id]=st;
+  // highlight the chosen button only
+  var box=document.getElementById("sb_"+id);
+  if(box){
+    var bs=box.querySelectorAll(".sbtn");
+    for(var i=0;i<bs.length;i++)bs[i].classList.remove("active");
+  }
+  if(btn)btn.classList.add("active");
+  // show only the box the chosen status needs
+  var rc=document.getElementById("rcptw_"+id);
+  var rj=document.getElementById("rejw_"+id);
+  if(rc)rc.classList.toggle("show",st==="done");
+  if(rj)rj.classList.toggle("show",st==="rejected");
+  if(st==="rejected"){var t=document.getElementById("rej_"+id);if(t)t.focus()}
+  var send=document.getElementById("send_"+id);
+  if(send){send.disabled=false;send.textContent="إرسال — "+SL[st]}
 }
-function cancelReject(id){
-  var wrap=document.getElementById("rejw_"+id);
-  if(wrap)wrap.classList.remove("show");
-}
-function confirmReject(id,btn){
-  var rej=document.getElementById("rej_"+id);
-  var reason=rej?rej.value.trim():"";
-  if(!reason){if(rej)rej.focus();toast("سبب الرفض مطلوب قبل الإرسال.");return}
-  setStatus(id,"rejected",btn,reason);
-}
+
 function uploadReceipt(id,input){
   var f=(input&&input.files&&input.files.length)?input.files[0]:null;
   var m=document.getElementById("rcptm_"+id);
@@ -823,38 +836,60 @@ function uploadReceipt(id,input){
   fetch(API+"/"+id+"/receipt",{method:"POST",credentials:"same-origin",body:fd})
     .then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||"تعذّر رفع الإيصال"}});return r.json()})
     .then(function(u){
-      toast("تم رفع إيصال التحويل ✓");
       var i=DATA.findIndex(function(d){return d.id===id});if(i>=0)DATA[i]=u;
+      m.className="rcpt-msg ok";m.textContent="تم رفع الإيصال ✓ اضغط إرسال لإتمام الإرجاع.";
+      toast("تم رفع إيصال التحويل ✓ اضغط إرسال.");
+      // keep the current selection alive after re-render
+      var keep=PICKED[id];
       render();
+      if(keep){
+        var b=document.querySelector('#sb_'+id+' .sbtn[data-st="'+keep+'"]');
+        if(b)pick(id,keep,b);
+      }
     })
     .catch(function(e){m.className="rcpt-msg err";m.textContent=(e&&e.msg)||"تعذّر رفع الإيصال.";input.value=""});
 }
-function setStatus(id,st,btn,rejectReason){
+
+function submitStatus(id,btn){
+  var st=PICKED[id];
+  if(!st){toast("اختر الحالة أولاً.");return}
+  var payload={status:st,changed_by:"financial@qaydao.com"};
+
   if(st==="done"){
     var rec=DATA.find(function(d){return d.id===id});
-    if(rec&&!rec.receipt_name){
-      toast("يجب إرفاق إيصال التحويل أولاً قبل: تم الإرجاع.");
-      var box=document.getElementById("rcptw_"+id);
-      if(box){box.scrollIntoView({behavior:"smooth",block:"center"});box.style.boxShadow="0 0 0 3px rgba(192,57,43,.35)";
-        setTimeout(function(){box.style.boxShadow=""},1600);}
+    if(!rec||!rec.receipt_name){
+      toast("يجب رفع إيصال التحويل قبل الإرسال.");
+      var rb=document.getElementById("rcptw_"+id);
+      if(rb){rb.classList.add("show");rb.scrollIntoView({behavior:"smooth",block:"center"});
+        rb.style.boxShadow="0 0 0 3px rgba(192,57,43,.35)";
+        setTimeout(function(){rb.style.boxShadow=""},1600);}
       return;
     }
   }
-  btn.disabled=true;
-  var payload={status:st,changed_by:"financial@qaydao.com"};
-  if(st==="rejected")payload.reject_reason=rejectReason||"";
+  if(st==="rejected"){
+    var t=document.getElementById("rej_"+id);
+    var reason=t?t.value.trim():"";
+    if(!reason){if(t)t.focus();toast("سبب الرفض مطلوب قبل الإرسال.");return}
+    payload.reject_reason=reason;
+  }
+
+  btn.disabled=true;btn.textContent="جارٍ الإرسال…";
   fetch(API+"/"+id+"/status",{method:"PATCH",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
     .then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||0}});return r.json()})
     .then(function(u){
       var msg;
-      if(st==="done")msg="تم إتمام الإرجاع ✓ يمكنك الآن رفع إيصال التحويل (اختياري).";
-      else if(st==="rejected")msg="تم رفض الطلب وتسجيل السبب. سيظهر التنبيه للموظف.";
-      else msg="تم تحديث الحالة إلى: "+SL[st]+". المدة المتوقعة للتحويل من ٧ إلى ١٤ يوم.";
+      if(st==="done")msg="تم إتمام الإرجاع ✓ مع إيصال التحويل.";
+      else if(st==="rejected")msg="تم رفض الطلب نهائياً وتسجيل السبب.";
+      else msg="تم تحديث الحالة إلى: "+SL[st]+".";
       toast(msg);
+      delete PICKED[id];
       var i=DATA.findIndex(function(d){return d.id===id});if(i>=0)DATA[i]=u;
       render();
     })
-    .catch(function(e){toast((e&&e.msg)||"تعذّر تحديث الحالة، حاول مجدداً.");btn.disabled=false});
+    .catch(function(e){
+      toast((e&&e.msg)||"تعذّر تحديث الحالة، حاول مجدداً.");
+      btn.disabled=false;btn.textContent="إرسال — "+SL[st];
+    });
 }
 load();
 setInterval(load,20000);
