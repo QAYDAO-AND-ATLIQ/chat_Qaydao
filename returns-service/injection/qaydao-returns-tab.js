@@ -93,6 +93,35 @@
   }
   function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 
+  /* --- IBAN: always starts with SA, digits only after it, 24 chars total --- */
+  function ibanNormalize(v){
+    v=(v||"").toUpperCase().replace(/\s/g,"");
+    // strip any leading SA (however many the user pasted/typed), keep digits only
+    var digits=v.replace(/^(SA)+/,"").replace(/\D/g,"");
+    return "SA"+digits.slice(0,22);
+  }
+  function ibanValid(v){ return /^SA\d{22}$/.test(v||""); }
+  window.qdIban=function(el){
+    var pos=el.selectionStart;
+    var before=el.value;
+    el.value=ibanNormalize(el.value);
+    // keep the caret sane and never let it sit inside "SA"
+    var np=Math.max(2, pos + (el.value.length-before.length));
+    try{ el.setSelectionRange(np,np); }catch(e){}
+    var hint=document.getElementById("q_iban_hint");
+    if(hint){
+      var n=el.value.length;
+      if(ibanValid(el.value)){hint.style.color="#1f7a4d";hint.textContent="✓ آيبان صحيح (24 خانة)";el.classList.remove("qd-invalid")}
+      else{hint.style.color="#5a6b7d";hint.textContent=n+" / 24 خانة — تبقّى "+(24-n)+" رقم";}
+    }
+  };
+  // block deleting the "SA" prefix
+  document.addEventListener("keydown",function(e){
+    var el=e.target;
+    if(!el||el.id!=="q_iban")return;
+    if((e.key==="Backspace"||e.key==="Delete")&&el.selectionStart<=2&&el.selectionEnd<=2){e.preventDefault()}
+  },true);
+
   /* ---------- sidebar nav item (same look as إدارة المنتجات) ---------- */
   function findNav(){
     return document.querySelector('aside ul[class*="list-none"]')
@@ -210,7 +239,9 @@
         '<div class="qd-f" id="q_reason_other_wrap" style="display:none"><label>اكتب سبب الإرجاع <span class="req">*</span></label><input id="q_reason_other" placeholder="حدّد السبب…"></div>'+
         '<div class="qd-f"><label>بنك العميل <span class="req">*</span></label><input id="q_bank"></div>'+
         '<div class="qd-2"><div class="qd-f"><label>الحساب البنكي <span class="req">*</span></label><input id="q_acc" dir="ltr" style="text-align:right"></div>'+
-          '<div class="qd-f"><label>الآيبان (IBAN) <span class="req">*</span></label><input id="q_iban" dir="ltr" style="text-align:right"></div></div>'+
+          '<div class="qd-f"><label>الآيبان (IBAN) <span class="req">*</span> <span style="color:#c0392b;font-weight:600;font-size:11.5px">— يبدأ بـ SA ويليه 22 رقم</span></label>'+
+            '<input id="q_iban" dir="ltr" style="text-align:right" value="SA" maxlength="24" placeholder="SA0380000000608010167519" oninput="qdIban(this)">'+
+            '<div id="q_iban_hint" style="font-size:11px;color:#5a6b7d;margin-top:4px"></div></div></div>'+
         '<div class="qd-f"><label>ملف / صورة الحساب البنكي <span class="req">*</span> <span style="color:#c0392b;font-weight:600;font-size:11.5px">— إلزامي (PDF أو صورة، حتى 10MB)</span></label>'+
           '<input id="q_file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="padding:7px 10px">'+
           '<div id="q_file_cur" style="font-size:12px;color:#5a6b7d;margin-top:5px"></div></div>'+
@@ -252,9 +283,14 @@
     ov.classList.add("show");
   }
   function resetForm(){
-    ["q_conv","q_name","q_order","q_amount","q_rdate","q_odate","q_bank","q_acc","q_iban","q_reason_other"].forEach(function(id){
+    ["q_conv","q_name","q_order","q_amount","q_rdate","q_odate","q_bank","q_acc","q_reason_other"].forEach(function(id){
       var e=document.getElementById(id);if(e){e.value="";e.classList.remove("qd-invalid")}
     });
+    // IBAN resets to the "SA" prefix, not empty
+    var ib=document.getElementById("q_iban");
+    if(ib){ib.value="SA";ib.classList.remove("qd-invalid")}
+    var ibh=document.getElementById("q_iban_hint");
+    if(ibh){ibh.textContent="";ibh.style.color="#5a6b7d"}
     var rs=document.getElementById("q_reason");if(rs){rs.selectedIndex=0;rs.classList.remove("qd-invalid")}
     var as=document.getElementById("q_assignee");if(as){as.value="";as.classList.remove("qd-invalid")}
     var fe=document.getElementById("q_file");if(fe){fe.value="";fe.classList.remove("qd-invalid")}
@@ -285,8 +321,15 @@
     var convVal=g("q_conv");
     var convEl=document.getElementById("q_conv");
     if(convVal&&!/^\d+$/.test(convVal)){convEl.classList.add("qd-invalid");if(!firstBad)firstBad=convEl;}
+    // IBAN must be a complete Saudi IBAN: SA + 22 digits
+    var ibanEl=document.getElementById("q_iban");
+    var ibanBad=!ibanValid(ibanEl?ibanEl.value.trim():"");
+    if(ibanBad&&ibanEl){ibanEl.classList.add("qd-invalid");if(!firstBad)firstBad=ibanEl;}
     if(firstBad){
-      msg.className="qd-msg err";msg.textContent="يرجى تعبئة جميع الحقول الإلزامية (وأرقام صحيحة لرقم المحادثة).";
+      msg.className="qd-msg err";
+      msg.textContent=(ibanBad&&firstBad===ibanEl)
+        ? "الآيبان غير مكتمل — يجب أن يكون SA يليه 22 رقماً (24 خانة)."
+        : "يرجى تعبئة جميع الحقول الإلزامية (وأرقام صحيحة لرقم المحادثة).";
       firstBad.focus();return;
     }
 
