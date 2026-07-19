@@ -453,3 +453,53 @@ FOLDERS_FORCE_SYNC=1 /root/chat-qaydao/captain-config/scripts/apply_folders.sh
 - **Why:** prevents the 880-pile-up from ever recurring silently. Rami chose triage-only (no auto-approve); REJECT stays pending (never auto-deleted).
 
 **Open items (Rami's queue):** review the 80 REVIEW + decide on the 57 REJECT via the digest links.
+
+### 2026-07-19 — Returns Service: purchaser role (النذير) + `done_salla` status
+
+**Returns Service is a standalone, isolated sidecar — NOT part of Chatwoot.**
+FastAPI on `127.0.0.1:8091` (`returns_service` container), with its OWN Postgres
+(`returns_db`, database `returns`, user `rguard`). It NEVER touches
+`chatwoot_production` / `chatwoot_postgres` / any `chatwoot_*` container. Source:
+`returns-service/`. **All future work on this feature stays inside the returns
+service and its `returns` DB — never edit Chatwoot or its database.**
+
+- **Accountant page:** https://chat.qaydao.com/accountant-returns — app-level
+  session auth (`accountant_users` + `accountant_sessions`), NOT nginx basic-auth.
+- **Users & roles:**
+  - `financial@qaydao.com` (المحاسبة) — financial accountant. Owns the financial
+    statuses ONLY: `will`, `doing`, `done`, `rejected`. Unchanged by this work.
+  - `rami@qaydao.com` (الإدارة) — management; same financial-status set.
+  - `pr@qaydao.com` (النذير — مدير المشتريات) — purchaser, added 2026-07-19.
+    Owns a SINGLE status: `done_salla` only.
+
+- **Status `done_salla`** → UI label **"تم الإرجاع في سلة"**.
+  - **Purchaser-only.** النذير sees ONLY the `done_salla` button + Send; the four
+    financial buttons are hidden for him, and financial tabs are hidden too.
+  - The financial accountant/management NEVER see the `done_salla` button or tab.
+  - **Intermediate status:** does NOT lock the request, does NOT require a receipt.
+    A `done_salla` request can still be moved to another status by an authorized user.
+  - Records the acting user in `status_history[].by` (from the session), so النذير's
+    confirmations are attributed to `pr@qaydao.com`.
+
+- **Permissions are per-user and SERVER-enforced (not just UI-hidden):**
+  - `allowed_statuses_for(email)` in `app.py`: purchaser → `["done_salla"]`,
+    everyone else → `["will","doing","done","rejected"]`. No overlap.
+  - `set_status` rejects any status outside the caller's allowed set with **HTTP 403**
+    (النذير→financial status = 403; financial→`done_salla` = 403).
+  - UI reads `GET /returns/api/me` (`allowed_statuses`, `is_purchaser`) to render only
+    the buttons/tabs that user may use.
+
+- **Finality unchanged:** `rejected` stays permanently final; `done` (تم الإرجاع)
+  remains the FINAL FINANCIAL status (still requires a transfer receipt first).
+
+**Any future status change must update ALL of these together:**
+`STATUS_LABELS` (server) · `set_status` validation + `allowed_statuses_for` (per-user
+permissions) · DB `CHECK` constraint on `return_requests.status` · accountant-page UI
+(`SL`, tabs, filter, counts, buttons) · per-user visibility via `GET /returns/api/me`.
+
+**Files:** `returns-service/app/app.py`, `returns-service/schema.sql`.
+**Backup (pre-change):** `returns-service/backups/20260719-064541/`.
+**Verified (API):** النذير login 200 · `/me` → `allowed_statuses:["done_salla"]`,
+`is_purchaser:true` · النذير→`will` = 403 · النذير→`done_salla` = 200 (`by=pr@qaydao.com`)
+· financial→`done_salla` = 403 · financial→`will` = 200 (unaffected) · `done_salla`→`doing`
+= 200 (not locked). No Chatwoot container/DB touched.
