@@ -664,6 +664,10 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .sbtn.rejected{background:#fdeded;color:#c0392b;border-color:#f3c6c1}
 .sbtn.done_salla{background:#eef4ff;color:#3b5bdb;border-color:#c7d6f5}
 .st.done_salla{background:#eef4ff;color:#3b5bdb}
+/* شريط "طلب منتج جديد" — عرض بصري فقط في صفحة المحاسب (لا يمس أي حالة/صلاحية/قاعدة) */
+.card.is-new{position:relative}
+.ribbon-new{display:flex;align-items:center;gap:6px;background:linear-gradient(90deg,var(--ok),#2f9e6f);color:#fff;font-weight:800;font-size:12px;letter-spacing:.2px;padding:7px 14px}
+.ribbon-new::before{content:"\1F195"}
 .sbtn:hover{transform:translateY(-1px)}
 .sbtn.active{box-shadow:0 0 0 3px rgba(31,95,91,.14)}
 .qd-note-in{width:100%;font-family:inherit;font-size:12.5px;color:#1f2b3a;background:#f8fafb;border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin-top:10px;resize:vertical}
@@ -813,11 +817,23 @@ function render(){
   e.style.display="none";
   g.innerHTML=list.map(card).join("");
 }
+// طلب حديث = تاريخ طلب المنتجات الأصلي خلال 3 أيام أو أقل من اليوم (مقارنة تواريخ فقط)
+function isRecentOrder(d){
+  if(!d)return false;
+  var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(d));
+  if(!m)return false;
+  var oo=new Date(+m[1],+m[2]-1,+m[3]);
+  var now=new Date();var today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  var diff=Math.floor((today-oo)/86400000);
+  return diff>=0 && diff<=3;
+}
 function card(x){
   var acc=esc(x.bank_account||"—"),iban=esc(x.iban||"—");
+  var isNew=isRecentOrder(x.original_order_at);
   var order=x.order_number?('<a class="olink ltr" href="#" onclick="return orderClick(\''+esc(x.order_number)+'\')">'+esc(x.order_number)+'</a>'):"—";
   var histRows=(x.status_history||[]).map(function(h){return '<div><b>'+esc(h.label)+'</b> · '+esc((h.at||"").replace("T"," ").slice(0,16))+' · '+esc(h.by||"")+'</div>'}).join("");
-  return '<div class="card">'+
+  return '<div class="card'+(isNew?' is-new':'')+'">'+
+    (isNew?'<div class="ribbon-new">طلب منتج جديد</div>':'')+
     '<div class="chead"><span class="nm">'+esc(x.customer_name||"—")+'</span><span class="st '+x.status+'">'+esc(SL[x.status]||x.status)+'</span></div>'+
     '<div class="cbody">'+
       '<div class="rowf"><span class="k">اسم العميل</span><span class="v">'+esc(x.customer_name||"—")+'</span></div>'+
