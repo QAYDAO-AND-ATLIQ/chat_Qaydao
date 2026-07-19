@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS return_requests (
     receipt_name      TEXT,
     receipt_path      TEXT,
     receipt_mime      TEXT,
+    contacted_at      TIMESTAMPTZ,
     created_by        TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()

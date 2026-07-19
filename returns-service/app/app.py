@@ -132,7 +132,7 @@ def _require_login_redirect():
 
 def row_to_dict(r) -> dict:
     d = dict(r)
-    for k in ("created_at", "updated_at"):
+    for k in ("created_at", "updated_at", "contacted_at"):
         if d.get(k) is not None:
             d[k] = d[k].isoformat()
     for k in ("return_created_at", "original_order_at"):
@@ -318,6 +318,29 @@ async def set_status(rid: int, body: StatusIn, returns_session: Optional[str] = 
                      reject_reason=CASE WHEN $2='rejected' THEN $5 ELSE reject_reason END
                WHERE id=$1 RETURNING *""",
             rid, body.status, json.dumps(hist), note_val, reject_val,
+        )
+    return row_to_dict(out)
+
+
+@app.post("/returns/api/requests/{rid}/contacted")
+async def mark_contacted(rid: int):
+    # CS-team action: the agent confirms they followed up with the accountant about a
+    # rejected request. This ONLY records the follow-up timestamp so the red alert stops
+    # counting it. It does NOT change the request status (stays 'rejected') and does NOT
+    # touch any accountant/financial logic. Reachable from the team page inside Chatwoot
+    # (no accountant login) — same trust model as the read-only team-requests endpoint.
+    p = await pool()
+    async with p.acquire() as c:
+        r = await c.fetchrow("SELECT status, contacted_at FROM return_requests WHERE id=$1", rid)
+        if not r:
+            raise HTTPException(404, "not found")
+        if r["status"] != "rejected":
+            raise HTTPException(400, "الإجراء متاح فقط للطلبات المرفوضة")
+        out = await c.fetchrow(
+            """UPDATE return_requests
+                 SET contacted_at = COALESCE(contacted_at, now())
+               WHERE id=$1 RETURNING *""",
+            rid,
         )
     return row_to_dict(out)
 
@@ -968,7 +991,8 @@ async def team_requests():
         rows = await c.fetch(
             """SELECT id, conversation_id, customer_name, order_number, reason,
                       status, accountant_note, reject_reason, assignee,
-                      receipt_name, status_history, return_created_at, updated_at
+                      receipt_name, status_history, return_created_at, updated_at,
+                      contacted_at
                  FROM return_requests ORDER BY id DESC LIMIT 300"""
         )
     out = []
@@ -979,6 +1003,8 @@ async def team_requests():
                 d[k] = d[k].isoformat()
         if d.get("updated_at") is not None:
             d["updated_at"] = d["updated_at"].isoformat()
+        if d.get("contacted_at") is not None:
+            d["contacted_at"] = d["contacted_at"].isoformat()
         if isinstance(d.get("status_history"), str):
             try:
                 d["status_history"] = json.loads(d["status_history"])
@@ -1051,6 +1077,12 @@ tr.rejrow{background:var(--rejsoft)}
 .b-new{background:#eef1f4;color:#5a6b7d}.b-will{background:var(--ambersoft);color:var(--amber)}
 .b-doing{background:var(--infosoft);color:var(--info)}.b-done{background:var(--oksoft);color:var(--ok)}
 .b-rejected{background:var(--rejsoft);color:var(--rej)}
+.b-done_salla{background:#eef4ff;color:#3b5bdb}
+.b-rejected_contacted{background:#eef1f4;color:#5a6b7d;border:1px solid #d7dde4}
+tr.contactedrow{background:#fbfcfd}
+.contact-btn{font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;border-radius:8px;padding:4px 10px;background:#fff;color:var(--rej);border:1px solid #f3c6c1;transition:.15s;white-space:nowrap}
+.contact-btn:hover{background:var(--rejsoft)}
+.contact-done{font-size:10.5px;font-weight:700;color:var(--soft);white-space:nowrap}
 .note{color:var(--ink)}.rej{color:var(--rej);font-weight:700}
 .rcpt-dl{color:var(--ok);font-weight:700;text-decoration:none;white-space:nowrap;background:var(--oksoft);border:1px solid #bfe3cd;border-radius:7px;padding:3px 9px;font-size:11.5px;display:inline-block}
 .rcpt-dl:hover{background:#d9f0e2}
@@ -1086,7 +1118,7 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
     <table>
       <thead><tr>
         <th>رقم المحادثة</th><th>العميل</th><th>رقم الطلب</th><th>سبب الإرجاع</th>
-        <th>الحالة</th><th>ملاحظة المحاسب</th><th>سبب الرفض</th><th>إيصال التحويل</th><th>الموظف</th>
+        <th>الحالة</th><th>ملاحظة المحاسب</th><th>سبب الرفض</th><th>إيصال التحويل</th><th>الموظف</th><th>إجراء</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -1111,7 +1143,7 @@ var EMAIL="financial@qaydao.com";
   }
 })();
 var DATA=[];
-var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض"};
+var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض",done_salla:"تم الإرجاع في سلة"};
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function load(){fetch(API).then(function(r){return r.json()}).then(function(d){DATA=Array.isArray(d)?d:[];render()}).catch(function(){})}
 var CURAGENT="";  // "" = الكل
@@ -1209,7 +1241,9 @@ function render(){
     return true;
   });
   document.getElementById("count").textContent=list.length+" طلب";
-  var rejected=list.filter(function(x){return x.status==="rejected"});
+  // Alert counts ONLY rejected requests the agent has NOT yet followed up on.
+  // Pressing "تم التواصل" sets contacted_at → the request drops out of this count.
+  var rejected=list.filter(function(x){return x.status==="rejected" && !x.contacted_at});
   var rb=document.getElementById("rejbar");
   if(rejected.length){rb.classList.add("show");rb.innerHTML="\u26A0 يوجد "+rejected.length+" طلب مرفوض. لمعرفة تفاصيل سبب الرفض تواصل مع المحاسب عبر الإيميل: <a href=\"mailto:"+EMAIL+"\">"+EMAIL+"</a>"}
   else{rb.classList.remove("show");rb.innerHTML=""}
@@ -1220,17 +1254,45 @@ function render(){
 }
 function row(x){
   var rej=x.status==="rejected";
-  return '<tr class="'+(rej?"rejrow":"")+'">'+
+  var contacted=rej && !!x.contacted_at;          // rejected AND already followed up
+  var openRej=rej && !x.contacted_at;             // rejected, still needs follow-up (red)
+  // status badge: a contacted-rejected request gets the calm "مرفوض — تم التواصل" badge
+  var badge = contacted
+    ? '<span class="badge b-rejected_contacted">مرفوض — تم التواصل</span>'
+    : '<span class="badge b-'+esc(x.status)+'">'+esc(SL[x.status]||x.status)+'</span>';
+  // reject-reason cell: keep the "email the accountant" hint only while still open
+  var rejCell = rej
+    ? (esc(x.reject_reason||"—") + (openRej ? '<br><span style="font-size:11px">\u26A0 تواصل مع المحاسب بالإيميل</span>' : ''))
+    : '—';
+  // action cell: "تم التواصل" button only for still-open rejected requests
+  var action='—';
+  if(openRej){
+    action='<button class="contact-btn" onclick="markContacted('+x.id+',this)">\u2713 تم التواصل</button>';
+  }else if(contacted){
+    action='<span class="contact-done">\u2713 تمت المتابعة</span>';
+  }
+  return '<tr class="'+(openRej?"rejrow":(contacted?"contactedrow":""))+'">'+
     '<td class="ltr">'+esc(x.conversation_id||"—")+'</td>'+
     '<td>'+esc(x.customer_name||"—")+'</td>'+
     '<td class="ltr">'+esc(x.order_number||"—")+'</td>'+
     '<td>'+esc(x.reason||"—")+'</td>'+
-    '<td><span class="badge b-'+esc(x.status)+'">'+esc(SL[x.status]||x.status)+'</span></td>'+
+    '<td>'+badge+'</td>'+
     '<td class="note">'+esc(x.accountant_note||"—")+'</td>'+
-    '<td class="'+(rej?"rej":"")+'">'+(rej?(esc(x.reject_reason||"—")+'<br><span style="font-size:11px">\u26A0 تواصل مع المحاسب بالإيميل</span>'):'—')+'</td>'+
+    '<td class="'+(openRej?"rej":"")+'">'+rejCell+'</td>'+
     '<td>'+(x.receipt_name?('<a class="rcpt-dl" href="/returns/api/requests/'+x.id+'/receipt" target="_blank">\u2B07 تحميل الإيصال</a>'):'—')+'</td>'+
     '<td>'+esc(x.assignee||"—")+'</td>'+
+    '<td>'+action+'</td>'+
   '</tr>';
+}
+function markContacted(id,btn){
+  btn.disabled=true;btn.textContent="جارٍ…";
+  fetch(API.replace("/team-requests","")+"/requests/"+id+"/contacted",{method:"POST"})
+    .then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||"تعذّر التسجيل"}});return r.json()})
+    .then(function(u){
+      var i=DATA.findIndex(function(d){return d.id===id});if(i>=0)DATA[i].contacted_at=u.contacted_at;
+      render();
+    })
+    .catch(function(e){btn.disabled=false;btn.textContent="\u2713 تم التواصل";alert((e&&e.msg)||"تعذّر تسجيل التواصل، حاول مجدداً.")});
 }
 load();
 setInterval(load,20000);
