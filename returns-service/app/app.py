@@ -49,7 +49,19 @@ REASONS = [
     "نقص في الطلب", "سبب آخر",
 ]
 ASSIGNEES = ["في", "مروة", "أميرة"]
-STATUS_LABELS = {"new": "جديد", "will": "سيتم الإرجاع", "doing": "جاري الإرجاع", "done": "تم الإرجاع", "rejected": "مرفوض"}
+STATUS_LABELS = {"new": "جديد", "will": "سيتم الإرجاع", "doing": "جاري الإرجاع", "done": "تم الإرجاع", "rejected": "مرفوض", "done_salla": "تم الإرجاع في سلة"}
+# --- Per-user status permissions (SERVER-enforced, not just UI-hidden) ---
+# النذير (procurement) may ONLY set done_salla. Everyone else (financial accountant,
+# management) may ONLY set the financial statuses. No overlap between the two roles.
+ACCOUNTANT_STATUSES = ["will", "doing", "done", "rejected"]
+PURCHASER_STATUSES  = ["done_salla"]
+PURCHASER_EMAILS    = {"pr@qaydao.com"}
+
+def allowed_statuses_for(email: str) -> list:
+    e = (email or "").lower()
+    if e in PURCHASER_EMAILS:
+        return list(PURCHASER_STATUSES)
+    return list(ACCOUNTANT_STATUSES)
 
 
 async def pool() -> asyncpg.Pool:
@@ -256,8 +268,12 @@ async def set_status(rid: int, body: StatusIn, returns_session: Optional[str] = 
     user = await current_user(returns_session)
     if not user:
         raise HTTPException(401, "login required")
-    if body.status not in ("will", "doing", "done", "rejected"):
+    if body.status not in ("will", "doing", "done", "rejected", "done_salla"):
         raise HTTPException(400, "invalid status")
+    # SERVER-side per-user permission: each role may set ONLY its own statuses.
+    # النذير → done_salla only; financial/management → will/doing/done/rejected only.
+    if body.status not in allowed_statuses_for(user.get("email")):
+        raise HTTPException(403, "غير مصرّح لك بتعيين هذه الحالة")
     if body.status == "rejected" and not (body.reject_reason or "").strip():
         raise HTTPException(400, "سبب الرفض مطلوب عند اختيار مرفوض")
     p = await pool()
@@ -304,6 +320,21 @@ async def set_status(rid: int, body: StatusIn, returns_session: Optional[str] = 
             rid, body.status, json.dumps(hist), note_val, reject_val,
         )
     return row_to_dict(out)
+
+
+@app.get("/returns/api/me")
+async def whoami(returns_session: Optional[str] = Cookie(None)):
+    user = await current_user(returns_session)
+    if not user:
+        raise HTTPException(401, "login required")
+    email = (user.get("email") or "").lower()
+    return {
+        "email": email,
+        "display_name": user.get("display_name"),
+        # exact set of statuses this user may set — drives which buttons/tabs the UI shows
+        "allowed_statuses": allowed_statuses_for(email),
+        "is_purchaser": email in PURCHASER_EMAILS,
+    }
 
 
 # ------------------------- Login + Accountant page -------------------------
@@ -608,6 +639,8 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .sbtn.doing{background:var(--infosoft);color:var(--info);border-color:var(--infoline)}
 .sbtn.done{background:var(--oksoft);color:var(--ok);border-color:#c5dddb}
 .sbtn.rejected{background:#fdeded;color:#c0392b;border-color:#f3c6c1}
+.sbtn.done_salla{background:#eef4ff;color:#3b5bdb;border-color:#c7d6f5}
+.st.done_salla{background:#eef4ff;color:#3b5bdb}
 .sbtn:hover{transform:translateY(-1px)}
 .sbtn.active{box-shadow:0 0 0 3px rgba(31,95,91,.14)}
 .qd-note-in{width:100%;font-family:inherit;font-size:12.5px;color:#1f2b3a;background:#f8fafb;border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin-top:10px;resize:vertical}
@@ -661,6 +694,7 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
     <button class="tab" data-tab="doing" onclick="setTab('doing',this)">جاري الإرجاع <span class="cnt" id="cnt-doing">0</span></button>
     <button class="tab" data-tab="done" onclick="setTab('done',this)">تم الإرجاع <span class="cnt" id="cnt-done">0</span></button>
     <button class="tab" data-tab="rejected" onclick="setTab('rejected',this)">مرفوض <span class="cnt" id="cnt-rejected">0</span></button>
+    <button class="tab" data-tab="done_salla" id="tab-done_salla" style="display:none" onclick="setTab('done_salla',this)">تم الإرجاع في سلة <span class="cnt" id="cnt-done_salla">0</span></button>
     <button class="tab tab-old" data-tab="old_done" onclick="setTab('old_done',this)">قديمة — تم الإرجاع <span class="cnt" id="cnt-old_done">0</span></button>
     <button class="tab tab-old" data-tab="old_rejected" onclick="setTab('old_rejected',this)">قديمة — مرفوضة <span class="cnt" id="cnt-old_rejected">0</span></button>
     <button class="tab" data-tab="all" onclick="setTab('all',this)">الكل <span class="cnt" id="cnt-all">0</span></button>
@@ -678,7 +712,10 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
 <script>
 var API="/returns/api/requests";
 var DATA=[];
-var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض"};
+var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض",done_salla:"تم الإرجاع في سلة"};
+var ME={email:"",allowed_statuses:["will","doing","done","rejected"],is_purchaser:false};
+function canStatus(st){return ME.allowed_statuses&&ME.allowed_statuses.indexOf(st)>=0;}
+function canSalla(){return canStatus("done_salla");}
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function toast(m){var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},2200)}
 function copy(v,btn){navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textContent="تم ✓";btn.classList.add("ok");setTimeout(function(){btn.textContent=o;btn.classList.remove("ok")},1400)})}
@@ -716,13 +753,14 @@ function inTab(x){
     case "doing":        return x.status==="doing";
     case "done":         return x.status==="done"     && !isOld(x);
     case "rejected":     return x.status==="rejected" && !isOld(x);
+    case "done_salla":   return x.status==="done_salla";
     case "old_done":     return x.status==="done"     &&  isOld(x);
     case "old_rejected": return x.status==="rejected" &&  isOld(x);
     default:             return true;
   }
 }
 function updateCounts(){
-  var c={new:0,will:0,doing:0,done:0,rejected:0,old_done:0,old_rejected:0};
+  var c={new:0,will:0,doing:0,done:0,rejected:0,done_salla:0,old_done:0,old_rejected:0};
   DATA.forEach(function(x){
     var old=isOld(x);
     if(x.status==="new")c.new++;
@@ -730,10 +768,11 @@ function updateCounts(){
     else if(x.status==="doing")c.doing++;
     else if(x.status==="done"){ old?c.old_done++:c.done++; }
     else if(x.status==="rejected"){ old?c.old_rejected++:c.rejected++; }
+    else if(x.status==="done_salla")c.done_salla++;
   });
   var set=function(id,n){var e=document.getElementById(id);if(e)e.textContent=n};
   set("cnt-new",c.new);set("cnt-will",c.will);set("cnt-doing",c.doing);
-  set("cnt-done",c.done);set("cnt-rejected",c.rejected);
+  set("cnt-done",c.done);set("cnt-rejected",c.rejected);set("cnt-done_salla",c.done_salla);
   set("cnt-old_done",c.old_done);set("cnt-old_rejected",c.old_rejected);
   set("cnt-all",DATA.length);
 }
@@ -778,10 +817,11 @@ function card(x){
         : (
           '<div class="pick-lbl">اختر الحالة الجديدة ثم اضغط إرسال</div>'+
           '<div class="sbtns" id="sb_'+x.id+'">'+
-            '<button class="sbtn will" data-st="will" onclick="pick('+x.id+',\'will\',this)">سيتم الإرجاع</button>'+
-            '<button class="sbtn doing" data-st="doing" onclick="pick('+x.id+',\'doing\',this)">جاري الإرجاع</button>'+
-            '<button class="sbtn done" data-st="done" onclick="pick('+x.id+',\'done\',this)">تم الإرجاع</button>'+
-            '<button class="sbtn rejected" data-st="rejected" onclick="pick('+x.id+',\'rejected\',this)">مرفوض</button>'+
+            (canStatus("will")?('<button class="sbtn will" data-st="will" onclick="pick('+x.id+',\'will\',this)">سيتم الإرجاع</button>'):'')+
+            (canStatus("doing")?('<button class="sbtn doing" data-st="doing" onclick="pick('+x.id+',\'doing\',this)">جاري الإرجاع</button>'):'')+
+            (canStatus("done")?('<button class="sbtn done" data-st="done" onclick="pick('+x.id+',\'done\',this)">تم الإرجاع</button>'):'')+
+            (canStatus("rejected")?('<button class="sbtn rejected" data-st="rejected" onclick="pick('+x.id+',\'rejected\',this)">مرفوض</button>'):'')+
+            (canStatus("done_salla")?('<button class="sbtn done_salla" data-st="done_salla" onclick="pick('+x.id+',\'done_salla\',this)">تم الإرجاع في سلة</button>'):'')+
           '</div>'+
           // receipt box — hidden until "تم الإرجاع" is picked
           '<div class="rcpt-wrap" id="rcptw_'+x.id+'">'+
@@ -891,7 +931,24 @@ function submitStatus(id,btn){
       btn.disabled=false;btn.textContent="إرسال — "+SL[st];
     });
 }
-load();
+function initMe(cb){fetch("/returns/api/me",{credentials:"same-origin"}).then(function(r){if(r.status===401){location.href="/accountant-login";return null}return r.json()}).then(function(m){if(m){ME=m;applyRole();}if(cb)cb();}).catch(function(){if(cb)cb();});}
+function applyRole(){
+  // Purchaser (النذير) has a single-status role: hide the financial-accountant tabs
+  // and show only the general read tabs + the "تم الإرجاع في سلة" tab.
+  var sallaTab=document.getElementById("tab-done_salla");
+  if(sallaTab)sallaTab.style.display=canSalla()?"":"none";
+  if(ME.is_purchaser){
+    // hide financial-only status tabs from النذير
+    ["will","doing","done","rejected","old_done","old_rejected"].forEach(function(t){
+      var b=document.querySelector('.tab[data-tab="'+t+'"]');
+      if(b)b.style.display="none";
+    });
+    // default the purchaser to their own tab
+    var own=document.getElementById("tab-done_salla");
+    if(own)setTab("done_salla",own);
+  }
+}
+initMe(function(){load();});
 setInterval(load,20000);
 </script></body></html>"""
 
