@@ -288,6 +288,22 @@ async def set_status(rid: int, body: StatusIn, returns_session: Optional[str] = 
                 409,
                 "هذا الطلب مرفوض نهائياً ولا يمكن تغيير حالته. يجب على خدمة العملاء رفع طلب إرجاع جديد.",
             )
+        # State-transition guards (root enforcement — not just UI).
+        cur = r["status"]
+        # A 'done' request is financially final — no status change allowed.
+        if cur == "done":
+            raise HTTPException(
+                409,
+                "هذا الطلب منتهٍ مالياً (تم الإرجاع) ولا يمكن تغيير حالته.",
+            )
+        # Once the financial track has started (will/doing), the accountant may
+        # only move it forward to 'done' — not back to will/doing/rejected.
+        # (النذير مسار مستقل: done_salla لا يخضع لهذا القيد.)
+        if cur in ("will", "doing") and body.status in ACCOUNTANT_STATUSES and body.status != "done":
+            raise HTTPException(
+                409,
+                "بعد بدء المسار المالي لا يمكن إلا التحويل إلى: تم الإرجاع.",
+            )
         # 'تم الإرجاع' requires the transfer receipt to be attached first.
         if body.status == "done" and not r["receipt_path"]:
             raise HTTPException(
@@ -690,6 +706,7 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .rcpt-req{font-weight:700;color:#c0392b;font-size:11px}
 .sbtn.needs-rcpt{opacity:.55}
 .locked{margin-top:12px;background:#fdeded;border:1px solid #f3c6c1;border-radius:11px;padding:12px 14px;font-size:12.5px;font-weight:600;color:#c0392b;line-height:1.6}
+.done-final{margin-top:12px;background:var(--oksoft);border:1px solid #b7e4cd;border-radius:11px;padding:12px 14px;font-size:12.5px;font-weight:600;color:var(--ok);line-height:1.6}
 .locked span{font-weight:500;color:#8a4038;font-size:11.5px}
 .rejsend{flex:1;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border-radius:9px;padding:9px 6px;border:none;background:#c0392b;color:#fff;transition:.15s}
 .rejsend:hover{background:#a5301f}
@@ -827,6 +844,24 @@ function isRecentOrder(d){
   var diff=Math.floor((today-oo)/86400000);
   return diff>=0 && diff<=3;
 }
+// أزرار الحالة المسموح عرضها للمستخدم الحالي حسب حالة الطلب (يطابق قيود السيرفر).
+// المحاسب: new/done_salla => الأربعة | will/doing => done فقط | done/rejected => لا شيء.
+// النذير: done_salla => يظهر فقط على new/will/doing.
+function visibleActions(x){
+  var out=[];
+  var s=x.status;
+  // حالات المحاسب المالية
+  if(s==="new" || s==="done_salla"){
+    ["will","doing","done","rejected"].forEach(function(st){ if(canStatus(st))out.push(st); });
+  } else if(s==="will" || s==="doing"){
+    if(canStatus("done"))out.push("done");
+  }
+  // زر النذير — مستقل، فقط على new/will/doing
+  if(canStatus("done_salla") && (s==="new"||s==="will"||s==="doing")){
+    out.push("done_salla");
+  }
+  return out;
+}
 function card(x){
   var acc=esc(x.bank_account||"—"),iban=esc(x.iban||"—");
   var isNew=isRecentOrder(x.original_order_at);
@@ -853,14 +888,18 @@ function card(x){
       (x.status==="rejected"
         ? ('<div class="locked">\uD83D\uDD12 هذا الطلب <b>مرفوض نهائياً</b> ولا يمكن تغيير حالته.<br>'+
            '<span>لإعادة فتحه يجب على خدمة العملاء رفع طلب إرجاع جديد من الشات.</span></div>')
-        : (
-          '<div class="pick-lbl">اختر الحالة الجديدة ثم اضغط إرسال</div>'+
+      : x.status==="done"
+        ? ('<div class="done-final">\u2705 هذا الطلب <b>منتهٍ مالياً (تم الإرجاع)</b> — للعرض فقط، لا يمكن تغيير حالته.</div>')
+        : (function(){
+            var acts=visibleActions(x);
+            if(!acts.length) return '';
+            var LBL={will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض",done_salla:"تم الإرجاع في سلة"};
+            var btns=acts.map(function(st){
+              return '<button class="sbtn '+st+'" data-st="'+st+'" onclick="pick('+x.id+',\''+st+'\',this)">'+LBL[st]+'</button>';
+            }).join("");
+            return '<div class="pick-lbl">اختر الحالة الجديدة ثم اضغط إرسال</div>'+
           '<div class="sbtns" id="sb_'+x.id+'">'+
-            (canStatus("will")?('<button class="sbtn will" data-st="will" onclick="pick('+x.id+',\'will\',this)">سيتم الإرجاع</button>'):'')+
-            (canStatus("doing")?('<button class="sbtn doing" data-st="doing" onclick="pick('+x.id+',\'doing\',this)">جاري الإرجاع</button>'):'')+
-            (canStatus("done")?('<button class="sbtn done" data-st="done" onclick="pick('+x.id+',\'done\',this)">تم الإرجاع</button>'):'')+
-            (canStatus("rejected")?('<button class="sbtn rejected" data-st="rejected" onclick="pick('+x.id+',\'rejected\',this)">مرفوض</button>'):'')+
-            (canStatus("done_salla")?('<button class="sbtn done_salla" data-st="done_salla" onclick="pick('+x.id+',\'done_salla\',this)">تم الإرجاع في سلة</button>'):'')+
+            btns+
           '</div>'+
           // receipt box — hidden until "تم الإرجاع" is picked
           '<div class="rcpt-wrap" id="rcptw_'+x.id+'">'+
@@ -876,8 +915,8 @@ function card(x){
             '<div class="qd-note-lbl" style="color:#c0392b">سبب الرفض (إلزامي)</div>'+
             '<textarea class="qd-note-in" id="rej_'+x.id+'" rows="2" placeholder="اكتب سبب الرفض…"></textarea>'+
           '</div>'+
-          '<button class="sendbtn" id="send_'+x.id+'" disabled onclick="submitStatus('+x.id+',this)">إرسال</button>'
-        ))+
+          '<button class="sendbtn" id="send_'+x.id+'" disabled onclick="submitStatus('+x.id+',this)">إرسال</button>';
+          })())+
       (histRows?'<div class="hist show">'+histRows+'</div>':'')+
     '</div></div>';
 }
