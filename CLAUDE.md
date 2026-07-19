@@ -472,14 +472,32 @@ service and its `returns` DB — never edit Chatwoot or its database.**
   - `pr@qaydao.com` (النذير — مدير المشتريات) — purchaser, added 2026-07-19.
     Owns a SINGLE status: `done_salla` only.
 
-- **Status `done_salla`** → UI label **"تم الإرجاع في سلة"**.
-  - **Purchaser-only.** النذير sees ONLY the `done_salla` button + Send; the four
-    financial buttons are hidden for him, and financial tabs are hidden too.
-  - The financial accountant/management NEVER see the `done_salla` button or tab.
+- **Status `done_salla`** → UI label **"تم الإرجاع في سلة"**. Marks that the
+  purchaser (النذير) has confirmed the return was completed inside Salla; the
+  request then moves to the financial accountant for the money transfer.
+  - **Action button (`done_salla`) — purchaser only.** النذير sees ONLY the
+    `done_salla` button + Send; the four financial buttons and the financial
+    status-tabs are hidden for him. Pressing it sets the request to `done_salla`.
+  - **"تم الإرجاع في سلة" tab — visible to EVERYONE (follow-up view).** The
+    financial accountant sees this tab to pick up `done_salla` requests; it is a
+    follow-up/monitoring view, NOT an action button for him. النذير sees it as his
+    own list. (Tab visibility ≠ button visibility — they are decided separately.)
   - **Intermediate status:** does NOT lock the request, does NOT require a receipt.
-    A `done_salla` request can still be moved to another status by an authorized user.
+    From `done_salla` the financial accountant moves it into his usual financial
+    statuses (`will`/`doing`/`done`/`rejected`).
   - Records the acting user in `status_history[].by` (from the session), so النذير's
     confirmations are attributed to `pr@qaydao.com`.
+
+- **Workflow (correct flow):**
+  1. النذير opens the accountant page → sees only the **تم الإرجاع في سلة** button →
+     confirms → request becomes `done_salla`.
+  2. `financial@qaydao.com` opens the page → the request appears under the
+     **تم الإرجاع في سلة** tab (the list API returns all rows to any logged-in user;
+     no per-user server filter needed).
+  3. The accountant opens it and applies a financial status
+     (`will`/`doing`/`done`/`rejected`). `done` still requires a transfer receipt.
+  - The accountant can NEVER send `done_salla` (403); النذير can NEVER send a
+    financial status (403).
 
 - **Permissions are per-user and SERVER-enforced (not just UI-hidden):**
   - `allowed_statuses_for(email)` in `app.py`: purchaser → `["done_salla"]`,
@@ -487,7 +505,8 @@ service and its `returns` DB — never edit Chatwoot or its database.**
   - `set_status` rejects any status outside the caller's allowed set with **HTTP 403**
     (النذير→financial status = 403; financial→`done_salla` = 403).
   - UI reads `GET /returns/api/me` (`allowed_statuses`, `is_purchaser`) to render only
-    the buttons/tabs that user may use.
+    the ACTION buttons that user may use. The `done_salla` follow-up tab is shown to
+    all users in `applyRole` regardless of action permissions.
 
 - **Finality unchanged:** `rejected` stays permanently final; `done` (تم الإرجاع)
   remains the FINAL FINANCIAL status (still requires a transfer receipt first).
@@ -500,6 +519,8 @@ permissions) · DB `CHECK` constraint on `return_requests.status` · accountant-
 **Files:** `returns-service/app/app.py`, `returns-service/schema.sql`.
 **Backup (pre-change):** `returns-service/backups/20260719-064541/`.
 **Verified (API):** النذير login 200 · `/me` → `allowed_statuses:["done_salla"]`,
-`is_purchaser:true` · النذير→`will` = 403 · النذير→`done_salla` = 200 (`by=pr@qaydao.com`)
-· financial→`done_salla` = 403 · financial→`will` = 200 (unaffected) · `done_salla`→`doing`
-= 200 (not locked). No Chatwoot container/DB touched.
+`is_purchaser:true` · النذير→`done_salla` = 200 (`by=pr@qaydao.com`) · النذير→`will` = 403
+· financial list includes the `done_salla` row (appears under the tab) · financial moves
+`done_salla`→`will`→`doing`→`rejected` = 200 each (financial pipeline works from
+`done_salla`) · financial→`done_salla` = 403. `done_salla` does not lock the request and
+needs no receipt. No Chatwoot container/DB touched.

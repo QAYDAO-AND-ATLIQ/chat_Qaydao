@@ -933,17 +933,22 @@ function submitStatus(id,btn){
 }
 function initMe(cb){fetch("/returns/api/me",{credentials:"same-origin"}).then(function(r){if(r.status===401){location.href="/accountant-login";return null}return r.json()}).then(function(m){if(m){ME=m;applyRole();}if(cb)cb();}).catch(function(){if(cb)cb();});}
 function applyRole(){
-  // Purchaser (النذير) has a single-status role: hide the financial-accountant tabs
-  // and show only the general read tabs + the "تم الإرجاع في سلة" tab.
+  // The "تم الإرجاع في سلة" tab is a follow-up view for EVERYONE:
+  //  - النذير sees it to track what he confirmed;
+  //  - the financial accountant sees it to pick up done_salla requests for the
+  //    financial transfer step.
+  // (Action button visibility is separate — driven per-status by canStatus(),
+  //  so only النذير gets the done_salla *button*; the accountant only gets his
+  //  four financial buttons.)
   var sallaTab=document.getElementById("tab-done_salla");
-  if(sallaTab)sallaTab.style.display=canSalla()?"":"none";
+  if(sallaTab)sallaTab.style.display="";
   if(ME.is_purchaser){
-    // hide financial-only status tabs from النذير
+    // النذير has no role in the financial pipeline: hide the financial status tabs.
     ["will","doing","done","rejected","old_done","old_rejected"].forEach(function(t){
       var b=document.querySelector('.tab[data-tab="'+t+'"]');
       if(b)b.style.display="none";
     });
-    // default the purchaser to their own tab
+    // default النذير to their own tab
     var own=document.getElementById("tab-done_salla");
     if(own)setTab("done_salla",own);
   }
