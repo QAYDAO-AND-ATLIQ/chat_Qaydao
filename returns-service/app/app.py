@@ -14,6 +14,7 @@ Auth model: the CS tab is only reachable inside Chatwoot (post-login). The accou
 by nginx basic-auth in front of this service. This service trusts the reverse proxy.
 """
 import os
+import re
 import json
 import uuid
 import secrets
@@ -50,6 +51,36 @@ REASONS = [
 ]
 ASSIGNEES = ["في", "مروة", "أميرة"]
 STATUS_LABELS = {"new": "جديد", "will": "سيتم الإرجاع", "doing": "جاري الإرجاع", "done": "تم الإرجاع", "rejected": "مرفوض", "done_salla": "تم الإرجاع في سلة"}
+
+# --- طريقة الاسترداد (refund method) ---
+# tabby/tamara/madfooat => رقم/مرجع واحد. bank_account => البنك + الحساب + الآيبان.
+REFUND_LABELS = {
+    "tabby": "تابي", "tamara": "تمارا",
+    "madfooat": "مدفوع", "bank_account": "الحساب البنكي",
+}
+REFUND_REF_METHODS = ("tabby", "tamara", "madfooat")
+IBAN_RE = re.compile(r"^SA\d{22}$")
+
+
+def validate_refund(body) -> None:
+    """تحقق خادمي (لا يُعتمد على الواجهة وحدها). يرفع 422 عند المخالفة."""
+    m = (body.refund_method or "").strip()
+    if not m:
+        raise HTTPException(422, "طريقة الاسترداد إلزامية.")
+    if m not in REFUND_LABELS:
+        raise HTTPException(422, "طريقة استرداد غير معروفة.")
+    if m in REFUND_REF_METHODS:
+        if not (body.refund_reference or "").strip():
+            raise HTTPException(422, f"رقم / مرجع {REFUND_LABELS[m]} إلزامي.")
+        return
+    # bank_account
+    if not (body.bank_name or "").strip():
+        raise HTTPException(422, "اسم البنك إلزامي.")
+    if not (body.bank_account or "").strip():
+        raise HTTPException(422, "الحساب البنكي إلزامي.")
+    iban = (body.iban or "").strip().upper().replace(" ", "")
+    if not IBAN_RE.match(iban):
+        raise HTTPException(422, "الآيبان غير صحيح — يجب أن يبدأ بـ SA ويليه 22 رقماً.")
 # --- Per-user status permissions (SERVER-enforced, not just UI-hidden) ---
 # النذير (procurement) may ONLY set done_salla. Everyone else (financial accountant,
 # management) may ONLY set the financial statuses. No overlap between the two roles.
@@ -144,6 +175,9 @@ def row_to_dict(r) -> dict:
         except Exception:
             d["status_history"] = []
     d["status_label"] = STATUS_LABELS.get(d.get("status"), d.get("status"))
+    # السجلات القديمة (قبل ميزة طريقة الاسترداد) بنكية ضمنياً — عرضاً فقط، لا يُكتب للـDB.
+    m = d.get("refund_method") or "bank_account"
+    d["refund_method_label"] = REFUND_LABELS.get(m, m)
     return d
 
 
@@ -155,6 +189,8 @@ class ReturnIn(BaseModel):
     return_created_at: Optional[str] = None
     original_order_at: Optional[str] = None
     reason: Optional[str] = None
+    refund_method: Optional[str] = None
+    refund_reference: Optional[str] = None
     bank_name: Optional[str] = None
     bank_account: Optional[str] = None
     iban: Optional[str] = None
@@ -194,6 +230,17 @@ def _parse_date(v):
 
 @app.post("/returns/api/requests")
 async def create_or_update(body: ReturnIn):
+    validate_refund(body)
+    # تطبيع: كل طريقة تحتفظ بحقولها فقط — لا تُخزَّن بيانات بنكية لطلب تابي/تمارا/مدفوع.
+    method = (body.refund_method or "").strip()
+    if method in REFUND_REF_METHODS:
+        ref = (body.refund_reference or "").strip()
+        bank_name = bank_account = iban = None
+    else:
+        ref = None
+        bank_name = (body.bank_name or "").strip()
+        bank_account = (body.bank_account or "").strip()
+        iban = (body.iban or "").strip().upper().replace(" ", "")
     p = await pool()
     async with p.acquire() as c:
         existing = None
@@ -214,23 +261,27 @@ async def create_or_update(body: ReturnIn):
                      customer_name=$2, order_number=$3, order_amount=$4,
                      return_created_at=$5, original_order_at=$6, reason=$7,
                      bank_name=$8, bank_account=$9, iban=$10, attachment_name=$11,
-                     assignee=$12, created_by=COALESCE($13, created_by)
+                     assignee=$12, created_by=COALESCE($13, created_by),
+                     refund_method=$14, refund_reference=$15
                    WHERE id=$1 RETURNING *""",
                 existing["id"], body.customer_name, body.order_number, body.order_amount,
-                rc, oo, body.reason, body.bank_name, body.bank_account, body.iban,
+                rc, oo, body.reason, bank_name, bank_account, iban,
                 body.attachment_name, body.assignee, body.created_by,
+                method, ref,
             )
         else:
             r = await c.fetchrow(
                 """INSERT INTO return_requests
                      (conversation_id, customer_name, order_number, order_amount,
                       return_created_at, original_order_at, reason, bank_name,
-                      bank_account, iban, attachment_name, assignee, status, created_by)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'new',$13)
+                      bank_account, iban, attachment_name, assignee, status, created_by,
+                      refund_method, refund_reference)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'new',$13,$14,$15)
                    RETURNING *""",
                 body.conversation_id, body.customer_name, body.order_number, body.order_amount,
-                rc, oo, body.reason, body.bank_name, body.bank_account, body.iban,
+                rc, oo, body.reason, bank_name, bank_account, iban,
                 body.attachment_name, body.assignee, body.created_by,
+                method, ref,
             )
         return row_to_dict(r)
 
@@ -862,8 +913,26 @@ function visibleActions(x){
   }
   return out;
 }
+// صفوف طريقة الاسترداد: تابي/تمارا/مدفوع => رقم/مرجع واحد | الحساب البنكي => البنك+الحساب+الآيبان.
+// السجلات القديمة بلا refund_method تُعامل كحساب بنكي (سلوك ما قبل الميزة).
+var RM={tabby:"تابي",tamara:"تمارا",madfooat:"مدفوع",bank_account:"الحساب البنكي"};
+function refundRows(x){
+  var m=x.refund_method||"bank_account";
+  var head='<div class="rowf"><span class="k">طريقة الاسترداد</span><span class="v"><b>'+esc(RM[m]||m)+'</b></span></div>';
+  if(m==="bank_account"){
+    var acc=esc(x.bank_account||"—"),iban=esc(x.iban||"—");
+    return head+
+      '<div class="rowf"><span class="k">البنك</span><span class="v">'+esc(x.bank_name||"—")+'</span></div>'+
+      '<div class="rowf"><span class="k">الحساب البنكي</span><span class="v copyv"><span class="ltr">'+acc+'</span><button class="cbtn" onclick="copy(\''+acc+'\',this)">نسخ</button></span></div>'+
+      '<div class="rowf"><span class="k">الآيبان</span><span class="v copyv"><span class="ltr">'+iban+'</span><button class="cbtn" onclick="copy(\''+iban+'\',this)">نسخ</button></span></div>';
+  }
+  var ref=esc(x.refund_reference||"—");
+  return head+
+    '<div class="rowf"><span class="k">رقم / مرجع '+esc(RM[m]||m)+'</span>'+
+    '<span class="v copyv"><span class="ltr">'+ref+'</span>'+
+    '<button class="cbtn" onclick="copy(\''+ref+'\',this)">نسخ</button></span></div>';
+}
 function card(x){
-  var acc=esc(x.bank_account||"—"),iban=esc(x.iban||"—");
   var isNew=isRecentOrder(x.original_order_at);
   var order=x.order_number?('<a class="olink ltr" href="#" onclick="return orderClick(\''+esc(x.order_number)+'\')">'+esc(x.order_number)+'</a>'):"—";
   var histRows=(x.status_history||[]).map(function(h){return '<div><b>'+esc(h.label)+'</b> · '+esc((h.at||"").replace("T"," ").slice(0,16))+' · '+esc(h.by||"")+'</div>'}).join("");
@@ -877,9 +946,7 @@ function card(x){
       '<div class="rowf"><span class="k">سبب الإرجاع</span><span class="v">'+esc(x.reason||"—")+'</span></div>'+
       '<div class="rowf"><span class="k">تاريخ طلب الإرجاع</span><span class="v ltr">'+esc(x.return_created_at||"—")+'</span></div>'+
       '<div class="rowf"><span class="k">تاريخ الطلب الأصلي</span><span class="v ltr">'+esc(x.original_order_at||"—")+'</span></div>'+
-      '<div class="rowf"><span class="k">البنك</span><span class="v">'+esc(x.bank_name||"—")+'</span></div>'+
-      '<div class="rowf"><span class="k">الحساب البنكي</span><span class="v copyv"><span class="ltr">'+acc+'</span><button class="cbtn" onclick="copy(\''+acc+'\',this)">نسخ</button></span></div>'+
-      '<div class="rowf"><span class="k">الآيبان</span><span class="v copyv"><span class="ltr">'+iban+'</span><button class="cbtn" onclick="copy(\''+iban+'\',this)">نسخ</button></span></div>'+
+      refundRows(x)+
       '<div class="rowf"><span class="k">الموظف المسؤول</span><span class="v">'+esc(x.assignee||"—")+'</span></div>'+
       '<div class="rowf"><span class="k">ملف الحساب البنكي</span><span class="v">'+
         (x.attachment_name?('<a class="olink" href="/returns/api/requests/'+x.id+'/attachment" target="_blank">\u2B07 '+esc(x.attachment_name)+'</a>'):'—')+
@@ -1047,7 +1114,7 @@ async def team_requests():
             """SELECT id, conversation_id, customer_name, order_number, reason,
                       status, accountant_note, reject_reason, assignee,
                       receipt_name, status_history, return_created_at, updated_at,
-                      contacted_at
+                      contacted_at, refund_method
                  FROM return_requests ORDER BY id DESC LIMIT 300"""
         )
     out = []
@@ -1066,6 +1133,9 @@ async def team_requests():
             except Exception:
                 d["status_history"] = []
         d["status_label"] = STATUS_LABELS.get(d.get("status"), d.get("status"))
+        # طريقة الاسترداد فقط — الرقم/المرجع والبيانات البنكية تبقى مستبعدة هنا (خصوصية).
+        d["refund_method_label"] = REFUND_LABELS.get(d.get("refund_method") or "bank_account",
+                                                    d.get("refund_method"))
         out.append(d)
     return out
 
@@ -1173,7 +1243,7 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
     <table>
       <thead><tr>
         <th>رقم المحادثة</th><th>العميل</th><th>رقم الطلب</th><th>سبب الإرجاع</th>
-        <th>الحالة</th><th>ملاحظة المحاسب</th><th>سبب الرفض</th><th>إيصال التحويل</th><th>الموظف</th><th>إجراء</th>
+        <th>طريقة الاسترداد</th><th>الحالة</th><th>ملاحظة المحاسب</th><th>سبب الرفض</th><th>إيصال التحويل</th><th>الموظف</th><th>إجراء</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -1331,6 +1401,7 @@ function row(x){
     '<td>'+esc(x.customer_name||"—")+'</td>'+
     '<td class="ltr">'+esc(x.order_number||"—")+'</td>'+
     '<td>'+esc(x.reason||"—")+'</td>'+
+    '<td>'+esc(x.refund_method_label||"—")+'</td>'+
     '<td>'+badge+'</td>'+
     '<td class="note">'+esc(x.accountant_note||"—")+'</td>'+
     '<td class="'+(openRej?"rej":"")+'">'+rejCell+'</td>'+

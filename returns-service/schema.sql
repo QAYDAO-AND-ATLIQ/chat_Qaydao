@@ -11,6 +11,10 @@ CREATE TABLE IF NOT EXISTS return_requests (
     return_created_at DATE,
     original_order_at DATE,
     reason            TEXT,
+    -- طريقة الاسترداد: tabby | tamara | madfooat | bank_account
+    -- (NULL في السجلات القديمة = حساب بنكي ضمنياً عند العرض فقط)
+    refund_method     TEXT,
+    refund_reference  TEXT,   -- الرقم/المرجع لتابي/تمارا/مدفوع
     bank_name         TEXT,
     bank_account      TEXT,
     iban              TEXT,

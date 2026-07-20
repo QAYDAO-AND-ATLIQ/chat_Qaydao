@@ -12,6 +12,10 @@
   var NAV_ID = "qd-returns-nav-item";
   var REASONS = ["المنتج تالف","المنتج غير مطابق للوصف","وصل منتج مختلف","العميل غيّر رأيه","تأخر التوصيل","مشكلة في المقاس أو اللون","نقص في الطلب","سبب آخر"];
   var ASSIGNEES = ["في","مروة","أميرة"];   // fallback only; the real list is fetched from Chatwoot
+  // طريقة الاسترداد — القيمة المخزّنة (إنجليزي) مقابل ما يراه الموظف (عربي).
+  var REFUND_OPTS = [["tabby","تابي"],["tamara","تمارا"],["madfooat","مدفوع"],["bank_account","الحساب البنكي"]];
+  var REFUND_REF_METHODS = ["tabby","tamara","madfooat"];
+  function refundLabel(v){for(var i=0;i<REFUND_OPTS.length;i++){if(REFUND_OPTS[i][0]===v)return REFUND_OPTS[i][1]}return ""}
   var AGENTS_CACHE = null;
 
   // Fetch the account's agents from Chatwoot (uses the logged-in agent's cookie).
@@ -237,7 +241,11 @@
           '<div class="qd-f"><label>تاريخ طلب المنتجات الأصلي <span class="req">*</span></label><input id="q_odate" type="date"></div></div>'+
         '<div class="qd-f"><label>سبب الإرجاع <span class="req">*</span></label><select id="q_reason">'+opts(REASONS)+'</select></div>'+
         '<div class="qd-f" id="q_reason_other_wrap" style="display:none"><label>اكتب سبب الإرجاع <span class="req">*</span></label><input id="q_reason_other" placeholder="حدّد السبب…"></div>'+
-        '<div class="qd-f"><label>بنك العميل <span class="req">*</span></label><input id="q_bank"></div>'+
+        '<div class="qd-f"><label>طريقة الاسترداد <span class="req">*</span></label><select id="q_refund"><option value="">— اختر —</option>'+
+          REFUND_OPTS.map(function(o){return '<option value="'+o[0]+'">'+esc(o[1])+'</option>'}).join("")+'</select></div>'+
+        '<div class="qd-f" id="q_ref_wrap" style="display:none"><label id="q_ref_lbl">الرقم / المرجع <span class="req">*</span></label><input id="q_ref" dir="ltr" style="text-align:right"></div>'+
+        '<div id="q_bank_wrap">'+
+        '<div class="qd-f"><label>اسم البنك <span class="req">*</span></label><input id="q_bank"></div>'+
         '<div class="qd-2"><div class="qd-f"><label>الحساب البنكي <span class="req">*</span></label><input id="q_acc" dir="ltr" style="text-align:right"></div>'+
           '<div class="qd-f"><label>الآيبان (IBAN) <span class="req">*</span> <span style="color:#c0392b;font-weight:600;font-size:11.5px">— يبدأ بـ SA ويليه 22 رقم</span></label>'+
             '<input id="q_iban" dir="ltr" style="text-align:right" value="SA" maxlength="24" placeholder="SA0380000000608010167519" oninput="qdIban(this)">'+
@@ -245,6 +253,7 @@
         '<div class="qd-f"><label>ملف / صورة الحساب البنكي <span class="req">*</span> <span style="color:#c0392b;font-weight:600;font-size:11.5px">— إلزامي (PDF أو صورة، حتى 10MB)</span></label>'+
           '<input id="q_file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" style="padding:7px 10px">'+
           '<div id="q_file_cur" style="font-size:12px;color:#5a6b7d;margin-top:5px"></div></div>'+
+        '</div>'+
         '<div class="qd-f"><label>الموظف المسؤول <span class="req">*</span></label><select id="q_assignee"><option value="">— اختر —</option>'+opts(ASSIGNEES)+'</select></div>'+
       '</div>'+
       '<div class="qd-rf"><button class="qd-save" id="qd-save">حفظ طلب الإرجاع</button>'+
@@ -259,6 +268,8 @@
     // toggle "other reason" free-text field
     var rs=document.getElementById("q_reason");
     if(rs)rs.addEventListener("change",toggleOtherReason);
+    var rf=document.getElementById("q_refund");
+    if(rf)rf.addEventListener("change",toggleRefund);
     return ov;
   }
   function toggleOtherReason(){
@@ -267,6 +278,27 @@
     var show=(rs.value==="سبب آخر");
     wrap.style.display=show?"":"none";
     if(!show){var o=document.getElementById("q_reason_other");if(o){o.value="";o.classList.remove("qd-invalid")}}
+  }
+  // إظهار/إخفاء حقول الاسترداد حسب الطريقة المختارة، مع تفريغ الحقول المخفية
+  // حتى لا تُرسَل بيانات لا تخص الطريقة (والسيرفر يطبّعها أيضاً — دفاع مزدوج).
+  function toggleRefund(){
+    var sel=document.getElementById("q_refund");
+    var refw=document.getElementById("q_ref_wrap"),bankw=document.getElementById("q_bank_wrap");
+    if(!sel||!refw||!bankw)return;
+    var v=sel.value;
+    var isRef=REFUND_REF_METHODS.indexOf(v)>=0;
+    refw.style.display=isRef?"":"none";
+    bankw.style.display=(v==="bank_account")?"":"none";
+    var lbl=document.getElementById("q_ref_lbl");
+    if(lbl)lbl.innerHTML='رقم / مرجع '+esc(refundLabel(v)||"")+' <span class="req">*</span>';
+    if(!isRef){var r=document.getElementById("q_ref");if(r){r.value="";r.classList.remove("qd-invalid")}}
+    if(v!=="bank_account"){
+      ["q_bank","q_acc"].forEach(function(id){var e=document.getElementById(id);if(e){e.value="";e.classList.remove("qd-invalid")}});
+      var ib=document.getElementById("q_iban");if(ib){ib.value="SA";ib.classList.remove("qd-invalid")}
+      var ibh=document.getElementById("q_iban_hint");if(ibh){ibh.textContent="";ibh.style.color="#5a6b7d"}
+      var fe=document.getElementById("q_file");if(fe){fe.value="";fe.classList.remove("qd-invalid")}
+      var cur=document.getElementById("q_file_cur");if(cur)cur.innerHTML="";
+    }
   }
   function getOv(){return document.getElementById("qd-ret-ov")||buildPanel()}
 
@@ -279,11 +311,12 @@
     if(cf&&cid)cf.value=cid;
     document.getElementById("q_rdate").value=today();
     toggleOtherReason();
+    toggleRefund();
     fillAssignees();
     ov.classList.add("show");
   }
   function resetForm(){
-    ["q_conv","q_name","q_order","q_amount","q_rdate","q_odate","q_bank","q_acc","q_reason_other"].forEach(function(id){
+    ["q_conv","q_name","q_order","q_amount","q_rdate","q_odate","q_bank","q_acc","q_reason_other","q_ref"].forEach(function(id){
       var e=document.getElementById(id);if(e){e.value="";e.classList.remove("qd-invalid")}
     });
     // IBAN resets to the "SA" prefix, not empty
@@ -292,6 +325,7 @@
     var ibh=document.getElementById("q_iban_hint");
     if(ibh){ibh.textContent="";ibh.style.color="#5a6b7d"}
     var rs=document.getElementById("q_reason");if(rs){rs.selectedIndex=0;rs.classList.remove("qd-invalid")}
+    var rf=document.getElementById("q_refund");if(rf){rf.value="";rf.classList.remove("qd-invalid")}
     var as=document.getElementById("q_assignee");if(as){as.value="";as.classList.remove("qd-invalid")}
     var fe=document.getElementById("q_file");if(fe){fe.value="";fe.classList.remove("qd-invalid")}
     var cur=document.getElementById("q_file_cur");if(cur)cur.innerHTML="";
@@ -306,10 +340,16 @@
     // ---- required-field validation ----
     var required=[["q_conv","رقم المحادثة"],["q_name","اسم العميل"],["q_order","رقم طلب العميل"],
       ["q_amount","مبلغ الطلب"],["q_rdate","تاريخ إنشاء طلب الإرجاع"],["q_odate","تاريخ الطلب الأصلي"],
-      ["q_reason","سبب الإرجاع"],["q_bank","بنك العميل"],["q_acc","الحساب البنكي"],
-      ["q_iban","الآيبان"],["q_assignee","الموظف المسؤول"]];
+      ["q_reason","سبب الإرجاع"],["q_refund","طريقة الاسترداد"],
+      ["q_assignee","الموظف المسؤول"]];
     var reasonSel=g("q_reason");
     if(reasonSel==="سبب آخر")required.push(["q_reason_other","سبب الإرجاع (نص)"]);
+    // حقول الاسترداد الإلزامية تعتمد على الطريقة المختارة
+    var method=g("q_refund");
+    var isRefMethod=REFUND_REF_METHODS.indexOf(method)>=0;
+    if(isRefMethod)required.push(["q_ref","رقم / مرجع "+refundLabel(method)]);
+    else if(method==="bank_account")
+      required.push(["q_bank","اسم البنك"],["q_acc","الحساب البنكي"],["q_iban","الآيبان"]);
     var firstBad=null;
     required.forEach(function(f){
       var el=document.getElementById(f[0]);if(!el)return;
@@ -321,9 +361,9 @@
     var convVal=g("q_conv");
     var convEl=document.getElementById("q_conv");
     if(convVal&&!/^\d+$/.test(convVal)){convEl.classList.add("qd-invalid");if(!firstBad)firstBad=convEl;}
-    // IBAN must be a complete Saudi IBAN: SA + 22 digits
+    // IBAN must be a complete Saudi IBAN: SA + 22 digits — للطريقة البنكية فقط (التحقق نفسه لم يتغير)
     var ibanEl=document.getElementById("q_iban");
-    var ibanBad=!ibanValid(ibanEl?ibanEl.value.trim():"");
+    var ibanBad=(method==="bank_account")&&!ibanValid(ibanEl?ibanEl.value.trim():"");
     if(ibanBad&&ibanEl){ibanEl.classList.add("qd-invalid");if(!firstBad)firstBad=ibanEl;}
     if(firstBad){
       msg.className="qd-msg err";
@@ -336,22 +376,27 @@
     var reasonFinal=(reasonSel==="سبب آخر")?g("q_reason_other"):reasonSel;
     var fileEl=document.getElementById("q_file");
     var file=(fileEl&&fileEl.files&&fileEl.files.length)?fileEl.files[0]:null;
-    if(!file){
+    // ملف الحساب البنكي إلزامي للطريقة البنكية فقط — لا معنى له مع تابي/تمارا/مدفوع.
+    if(!file&&method==="bank_account"){
       msg.className="qd-msg err";
       msg.textContent="يجب إرفاق ملف أو صورة الحساب البنكي.";
       if(fileEl){fileEl.classList.add("qd-invalid");fileEl.focus();fileEl.scrollIntoView({behavior:"smooth",block:"center"})}
       return;
     }
     if(fileEl)fileEl.classList.remove("qd-invalid");
-    if(file.size>10*1024*1024){msg.className="qd-msg err";msg.textContent="حجم الملف يتجاوز 10 ميجابايت.";return}
+    if(file&&file.size>10*1024*1024){msg.className="qd-msg err";msg.textContent="حجم الملف يتجاوز 10 ميجابايت.";return}
 
     btn.disabled=true;msg.className="qd-msg";msg.textContent="جارٍ الحفظ…";
     var body={conversation_id:parseInt(convVal,10),customer_name:g("q_name"),order_number:g("q_order"),
       order_amount:g("q_amount"),return_created_at:g("q_rdate"),original_order_at:g("q_odate"),
-      reason:reasonFinal,bank_name:g("q_bank"),bank_account:g("q_acc"),iban:g("q_iban"),
+      reason:reasonFinal,refund_method:method,refund_reference:(isRefMethod?g("q_ref"):""),
+      bank_name:g("q_bank"),bank_account:g("q_acc"),iban:g("q_iban"),
       assignee:g("q_assignee"),created_by:agentName()};
     fetch(API+"/requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
-      .then(function(r){if(!r.ok)throw 0;return r.json()})
+      .then(function(r){
+        if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||"تعذّر حفظ الطلب"}},function(){throw 0});
+        return r.json();
+      })
       .then(function(saved){
         window.__qd_current_rid=saved.id;
         if(!file){throw {ok:true}}
