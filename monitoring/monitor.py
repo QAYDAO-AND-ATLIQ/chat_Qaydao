@@ -460,23 +460,41 @@ def mark_alert_sent(check_id: str, redis_client) -> None:
 
 # ──────────────── Main ────────────────
 
+# Human CS coverage window (Riyadh): Sat–Thu 09:00–21:00 — Friday is off.
+CS_HOURS_START = 9
+CS_HOURS_END = 21
+CS_OFF_WEEKDAYS = {4}  # datetime.weekday(): Mon=0 … Fri=4
+BUSINESS_HOURS_ONLY_CHECKS = {"open_backlog"}
+
+
+def in_cs_hours(rh: datetime) -> bool:
+    return rh.weekday() not in CS_OFF_WEEKDAYS and CS_HOURS_START <= rh.hour < CS_HOURS_END
+
+
 def check_open_backlog() -> tuple[str, bool, str]:
-    """Alert only on conversations that are GENUINELY WAITING FOR A REPLY.
-    The old metric counted every open chat (incl. ones agents are actively
-    handling + automated ones), which ballooned at midnight when the 24h window
-    swept the whole day's peak (false 122 alert). This counts only chats where:
-      - status is open(0) or pending(2)
-      - active in the last 24h
-      - the LAST message is incoming (customer is waiting), and
-      - it has been waiting > 30 minutes with no reply.
-    That is the real, actionable backlog."""
+    """Conversations GENUINELY WAITING FOR A HUMAN, measured in team time.
+    Counts open(0)/pending(2) chats active in the window whose LAST real
+    message is incoming (customer waiting) and that have waited > 30 minutes
+    — with the clock starting at max(last customer message, today's shift
+    start 09:00 Riyadh), so overnight/Friday messages give the team 30 min
+    after shift start instead of firing a false critical alert.
+    Only evaluated inside CS hours (see BUSINESS_HOURS_ONLY_CHECKS in main).
+    Saturday widens the window to 48h so Friday's chats are not dropped."""
+    rh = now_riyadh()
+    shift_start_utc = (rh.replace(hour=CS_HOURS_START, minute=0, second=0, microsecond=0)
+                       .astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+    window_h = 48 if rh.weekday() == 5 else 24
     val = db_query(
-        "SELECT COUNT(*) FROM conversations c "
-        "WHERE c.account_id=1 AND c.status IN (0,2) "
-        "AND c.last_activity_at > NOW() - INTERVAL '24 hours' "
-        "AND c.last_activity_at < NOW() - INTERVAL '30 minutes' "
-        "AND (SELECT message_type FROM messages m WHERE m.conversation_id=c.id "
-        "     AND m.message_type IN (0,1) ORDER BY m.created_at DESC LIMIT 1) = 0;"
+        "SELECT COUNT(*) FROM ("
+        " SELECT (SELECT m.created_at FROM messages m WHERE m.conversation_id=c.id"
+        "         AND m.message_type IN (0,1) ORDER BY m.created_at DESC LIMIT 1) AS last_at,"
+        "        (SELECT m.message_type FROM messages m WHERE m.conversation_id=c.id"
+        "         AND m.message_type IN (0,1) ORDER BY m.created_at DESC LIMIT 1) AS last_type"
+        " FROM conversations c WHERE c.account_id=1 AND c.status IN (0,2)"
+        f" AND c.last_activity_at > NOW() - INTERVAL '{window_h} hours'"
+        ") w WHERE w.last_type=0"
+        f" AND GREATEST(w.last_at, TIMESTAMP '{shift_start_utc}')"
+        " < (NOW() AT TIME ZONE 'UTC') - INTERVAL '30 minutes';"
     )
     try:
         n = int(val)
@@ -486,7 +504,7 @@ def check_open_backlog() -> tuple[str, bool, str]:
     if n <= threshold:
         return "open_backlog", True, f"{n} محادثة تنتظر رداً (ضمن الحد)"
     return "open_backlog", False, (
-        f"تكدّس محادثات: {n} محادثة تنتظر رداً فعلياً منذ أكثر من 30 دقيقة (الحد {threshold}).\n"
+        f"تكدّس محادثات: {n} محادثة تنتظر رداً فعلياً منذ أكثر من 30 دقيقة من وقت الدوام (الحد {threshold}).\n"
         f"قد يحتاج QAYDAO AI مراجعة، أو هناك أسئلة متكررة لا يجيب عنها، أو نقص في فريق خدمة العملاء."
     )
 
@@ -616,6 +634,10 @@ def main():
             # During maintenance, don't alert on intentionally-down captain pieces
             if maintenance and check_id in CAPTAIN_CHECKS_SKIPPED_IN_MAINTENANCE:
                 log.info(f"  ⏸️  {check_id}: skipped (maintenance mode)")
+                continue
+            # Human-coverage checks are meaningless outside CS hours (Friday / 21:00–09:00)
+            if check_id in BUSINESS_HOURS_ONLY_CHECKS and not in_cs_hours(rh):
+                log.info(f"  🌙 {check_id}: skipped (outside CS hours) — {msg}")
                 continue
         except Exception as e:
             log.exception(f"check {check_fn.__name__} crashed")
