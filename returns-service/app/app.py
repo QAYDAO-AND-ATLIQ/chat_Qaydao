@@ -1137,6 +1137,33 @@ async def stock_hint(order_number: str = ""):
     return await _stock_hint_payload(order_number)
 
 
+# ---------------------------------------------------------------------------
+# 2026-10-28 — طلبات الاسترداد لنظام المشتريات (CN-Ops): يوقف شراء بنود الطلب الذي طلب عميله
+# استرداد المبلغ (تأخر/إلغاء) قبل أن تُشترى. CN-Ops يسحب هذه القائمة دورياً.
+# محمي بنفس الرمز المشترك (CNOPS_SERVICE_TOKEN = RETURNS_SERVICE_TOKEN في CN-Ops). لا بيانات بنكية.
+# ---------------------------------------------------------------------------
+@app.get("/returns/api/internal/refunds")
+async def internal_refunds(request: Request, days: int = 365):
+    import hmac
+    auth = request.headers.get("authorization") or ""
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if not CNOPS_SERVICE_TOKEN or not token or not hmac.compare_digest(token, CNOPS_SERVICE_TOKEN):
+        raise HTTPException(401, "unauthorized")
+    days = max(1, min(int(days or 365), 730))
+    p = await pool()
+    async with p.acquire() as c:
+        rows = await c.fetch(
+            "SELECT id, order_number, status, reason, created_at, updated_at FROM return_requests "
+            "WHERE created_at >= now() - ($1::int * interval '1 day') ORDER BY id",
+            days,
+        )
+    return {"ok": True, "rows": [{
+        "id": r["id"], "order_number": (r["order_number"] or "").strip(), "status": r["status"],
+        "reason": r["reason"], "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+    } for r in rows]}
+
+
 @app.get("/returns/api/config")
 async def config():
     return {"reasons": REASONS, "assignees": ASSIGNEES, "status_labels": STATUS_LABELS}
