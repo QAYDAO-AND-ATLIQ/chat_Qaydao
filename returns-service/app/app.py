@@ -50,7 +50,7 @@ REASONS = [
     "نقص في الطلب", "سبب آخر",
 ]
 ASSIGNEES = ["في", "مروة", "أميرة"]
-STATUS_LABELS = {"new": "جديد", "will": "سيتم الإرجاع", "doing": "جاري الإرجاع", "done": "تم الإرجاع", "rejected": "مرفوض", "done_salla": "تم التعميد من المشتريات"}
+STATUS_LABELS = {"new": "جديد", "will": "سيتم الإرجاع", "doing": "جاري الإرجاع", "done": "تم الإرجاع", "rejected": "مرفوض", "done_salla": "تم التعميد من المشتريات", "cancelled": "ملغى بطلب العميل"}
 
 # --- طريقة الاسترداد (refund method) ---
 # tabby/tamara/madfooat => رقم/مرجع واحد. bank_account => البنك + الحساب + الآيبان.
@@ -249,7 +249,7 @@ async def create_or_update(body: ReturnIn):
             # a re-submission for the same conversation creates a brand-new request.
             existing = await c.fetchrow(
                 """SELECT id FROM return_requests
-                    WHERE conversation_id=$1 AND status NOT IN ('rejected','done')
+                    WHERE conversation_id=$1 AND status NOT IN ('rejected','done','cancelled')
                     ORDER BY id DESC LIMIT 1""",
                 body.conversation_id,
             )
@@ -422,7 +422,7 @@ def _build_accountant_workbook(rows, period_label: str, exported_by: str):
         ("شكوى / قضية", 13), ("تفاصيل الشكوى", 26), ("عُلّمت بواسطة", 13),
         ("طريقة الاسترداد", 15), ("مرجع الاسترداد", 18),
         ("البنك", 18), ("رقم الحساب", 22), ("الآيبان", 28),
-        ("ملاحظة المحاسب", 28), ("سبب الرفض", 24), ("الموظف", 12),
+        ("ملاحظة المحاسب", 28), ("سبب الرفض / الإلغاء", 24), ("الموظف", 12),
         ("إيصال التحويل", 12), ("تاريخ الإنشاء", 13),
         ("تاريخ طلب الإرجاع", 15), ("تاريخ الطلب الأصلي", 15), ("آخر تحديث", 16),
     ]
@@ -487,7 +487,7 @@ def _build_accountant_workbook(rows, period_label: str, exported_by: str):
             (r["bank_account"] or "—").strip(),
             (r["iban"] or "—").strip(),
             (r["accountant_note"] or "—").strip(),
-            (r["reject_reason"] or "—").strip(),
+            ((r["cancel_reason"] if r["status"] == "cancelled" else r["reject_reason"]) or "—").strip(),
             (r["assignee"] or "—").strip() or "—",
             "نعم" if r["receipt_name"] else "لا",
             _fmt_dt(r["created_at"]),
@@ -606,6 +606,8 @@ async def set_status(rid: int, body: StatusIn, returns_session: Optional[str] = 
         r = await c.fetchrow("SELECT status, status_history, receipt_path FROM return_requests WHERE id=$1", rid)
         if not r:
             raise HTTPException(404, "not found")
+        if r["status"] == "cancelled":
+            raise HTTPException(409, "هذا الطلب ملغى بطلب العميل ولا يمكن تغيير حالته.")
         # A rejected request is FINAL — it can never be reopened or changed.
         # The agent must submit a brand-new return request from Chatwoot.
         if r["status"] == "rejected":
@@ -753,6 +755,58 @@ async def mark_contacted(rid: int):
     return row_to_dict(out)
 
 
+class CancelIn(BaseModel):
+    reason: str
+    cancelled_by: Optional[str] = None
+
+
+CANCELLABLE_STATUSES = ("new", "done_salla")
+
+
+@app.post("/returns/api/requests/{rid}/cancel")
+async def cancel_request(rid: int, body: CancelIn):
+    # CS-team action: the customer no longer wants the return. Allowed ONLY before
+    # the accountant starts the financial track (new / done_salla). Final state —
+    # set_status and receipt upload refuse cancelled rows. Same trust model as
+    # /contacted and /issue (team page inside Chatwoot, no accountant login).
+    reason = (body.reason or "").strip()
+    if not reason:
+        raise HTTPException(400, "سبب الإلغاء مطلوب")
+    who = (body.cancelled_by or "").strip() or "team"
+    p = await pool()
+    async with p.acquire() as c:
+        async with c.transaction():
+            r = await c.fetchrow(
+                "SELECT status, status_history FROM return_requests WHERE id=$1 FOR UPDATE", rid)
+            if not r:
+                raise HTTPException(404, "not found")
+            if r["status"] not in CANCELLABLE_STATUSES:
+                raise HTTPException(
+                    409,
+                    f"لا يمكن إلغاء الطلب في حالة «{STATUS_LABELS.get(r['status'], r['status'])}» — الإلغاء متاح فقط قبل بدء المحاسب.",
+                )
+            hist = r["status_history"]
+            if isinstance(hist, str):
+                hist = json.loads(hist)
+            hist = list(hist or [])
+            hist.append({
+                "status": "cancelled",
+                "label": STATUS_LABELS["cancelled"],
+                "by": who,
+                "at": datetime.now(timezone.utc).isoformat(),
+                "note": reason,
+            })
+            out = await c.fetchrow(
+                """UPDATE return_requests
+                      SET status='cancelled', status_history=$2::jsonb,
+                          cancel_reason=$3, cancelled_by=$4, cancelled_at=now(),
+                          updated_at=now()
+                    WHERE id=$1 RETURNING *""",
+                rid, json.dumps(hist), reason, who,
+            )
+    return row_to_dict(out)
+
+
 @app.get("/returns/api/me")
 async def whoami(returns_session: Optional[str] = Cookie(None)):
     user = await current_user(returns_session)
@@ -891,6 +945,8 @@ async def upload_receipt(rid: int, file: UploadFile = File(...), returns_session
         row = await c.fetchrow("SELECT receipt_path, status FROM return_requests WHERE id=$1", rid)
         if not row:
             raise HTTPException(404, "not found")
+        if row["status"] == "cancelled":
+            raise HTTPException(409, "هذا الطلب ملغى بطلب العميل ولا يمكن إرفاق إيصال له.")
         if row["status"] == "rejected":
             raise HTTPException(409, "هذا الطلب مرفوض نهائياً ولا يمكن إرفاق إيصال له.")
         if row["receipt_path"]:
@@ -1020,6 +1076,54 @@ async def _stock_hint_payload(order_number: str) -> dict:
     if len(_stock_cache) > 500:
         _stock_cache.clear()
     _stock_cache[key] = (now + STOCK_HINT_TTL, payload)
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# warehouse-return 2026-10-28 — حالة المرتجع في مستودع جدة (CN-Ops ← مرتجعات العملاء)
+# ---------------------------------------------------------------------------
+# المحاسب يرى قبل صرف المبلغ: هل وصل المرتجع للمستودع؟ وما نتيجة فحصه؟ ودخل المخزون أم «تالف»؟
+# نفس الجسر ونفس السر ونفس مبادئ stock-hint: مهلة قصيرة، كاش قصير، وأي فشل = صمت.
+CNOPS_RETURN_URL = os.environ.get("CNOPS_RETURN_URL") or CNOPS_STOCK_URL.replace("/order-stock", "/order-return")
+WH_RETURN_TTL = 60
+_wh_cache: dict = {}
+
+
+def _fetch_order_return_blocking(order_number: str) -> dict:
+    import urllib.parse
+    import urllib.request
+
+    url = f"{CNOPS_RETURN_URL}?{urllib.parse.urlencode({'order_number': order_number})}"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {CNOPS_SERVICE_TOKEN}", "Accept": "application/json",
+        "User-Agent": "qaydao-returns-service/warehouse-return"})
+    with urllib.request.urlopen(req, timeout=STOCK_HINT_TIMEOUT) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+@app.get("/returns/api/warehouse-return")
+async def warehouse_return(order_number: str = ""):
+    """آخر مرتجع لهذا الطلب في مستودع جدة. {"checked": bool, "found": bool, "return": {...}|null}"""
+    import asyncio
+    import time
+
+    key = (order_number or "").strip()
+    empty = {"checked": False, "found": False, "return": None}
+    if not key or not CNOPS_SERVICE_TOKEN:
+        return empty
+    hit = _wh_cache.get(key)
+    now = time.time()
+    if hit and hit[0] > now:
+        return hit[1]
+    try:
+        raw = await asyncio.to_thread(_fetch_order_return_blocking, key)
+    except Exception as exc:  # noqa: BLE001 — الصمت مقصود
+        print(f"[warehouse-return] lookup failed for {key}: {type(exc).__name__}: {exc}", flush=True)
+        return empty
+    payload = {"checked": True, "found": bool(raw.get("found")), "return": raw.get("return")}
+    if len(_wh_cache) > 500:
+        _wh_cache.clear()
+    _wh_cache[key] = (now + WH_RETURN_TTL, payload)
     return payload
 
 
@@ -1171,6 +1275,7 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .st.doing{background:var(--infosoft);color:var(--info)}
 .st.done{background:var(--oksoft);color:var(--ok)}
 .st.rejected{background:#fdeded;color:#c0392b}
+.st.cancelled{background:#f1eef6;color:#6b5b86}
 .cbody{padding:14px 16px}
 .rowf{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px dashed #eef1f4}
 .rowf:last-of-type{border-bottom:none}
@@ -1195,6 +1300,13 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .ribbon-stock{display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#b9770e,#e59f1a);color:#fff;font-weight:800;font-size:12px;letter-spacing:.2px;padding:8px 14px;line-height:1.6}
 .ribbon-stock::before{content:"\1F4E6";font-size:15px}
 .ribbon-stock .sk{font-weight:600;opacity:.95;font-size:11.5px}
+.ribbon-wh{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font-weight:800;font-size:12px;padding:7px 14px;line-height:1.6;border-bottom:1px solid rgba(0,0,0,.06)}
+.ribbon-wh::before{content:"\21A9";font-size:14px}
+.ribbon-wh .sk{font-weight:600;font-size:11.5px;opacity:.9}
+.ribbon-wh.wh-none{background:#f3f5f7;color:#5a6b7d}
+.ribbon-wh.wh-wait{background:#fff6e5;color:#9a6200}
+.ribbon-wh.wh-ok{background:#e9f7ef;color:#1e7a45}
+.ribbon-wh.wh-bad{background:#fdecec;color:#b42318}
 .ribbon-stock .sc{background:rgba(255,255,255,.22);border-radius:6px;padding:1px 7px;font-size:11.5px}
 .sbtn:hover{transform:translateY(-1px)}
 .sbtn.active{box-shadow:0 0 0 3px rgba(31,95,91,.14)}
@@ -1219,6 +1331,7 @@ header p{font-size:13px;color:var(--soft);margin-top:2px}
 .sbtn.needs-rcpt{opacity:.55}
 .locked{margin-top:12px;background:#fdeded;border:1px solid #f3c6c1;border-radius:11px;padding:12px 14px;font-size:12.5px;font-weight:600;color:#c0392b;line-height:1.6}
 .done-final{margin-top:12px;background:var(--oksoft);border:1px solid #b7e4cd;border-radius:11px;padding:12px 14px;font-size:12.5px;font-weight:600;color:var(--ok);line-height:1.6}
+.cx-final{margin-top:12px;background:#f1eef6;border:1px solid #ddd5ea;border-radius:11px;padding:12px 14px;font-size:12.5px;font-weight:600;color:#6b5b86;line-height:1.7}
 .locked span{font-weight:500;color:#8a4038;font-size:11.5px}
 .rejsend{flex:1;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border-radius:9px;padding:9px 6px;border:none;background:#c0392b;color:#fff;transition:.15s}
 .rejsend:hover{background:#a5301f}
@@ -1250,6 +1363,7 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
     <button class="tab" data-tab="doing" onclick="setTab('doing',this)">جاري الإرجاع <span class="cnt" id="cnt-doing">0</span></button>
     <button class="tab" data-tab="done" onclick="setTab('done',this)">تم الإرجاع <span class="cnt" id="cnt-done">0</span></button>
     <button class="tab" data-tab="rejected" onclick="setTab('rejected',this)">مرفوض <span class="cnt" id="cnt-rejected">0</span></button>
+    <button class="tab" data-tab="cancelled" onclick="setTab('cancelled',this)">ملغاة بطلب العميل <span class="cnt" id="cnt-cancelled">0</span></button>
     <button class="tab" data-tab="done_salla" id="tab-done_salla" style="display:none" onclick="setTab('done_salla',this)">تم التعميد من المشتريات <span class="cnt" id="cnt-done_salla">0</span></button>
     <button class="tab tab-old" data-tab="old_done" onclick="setTab('old_done',this)">قديمة — تم الإرجاع <span class="cnt" id="cnt-old_done">0</span></button>
     <button class="tab tab-old" data-tab="old_rejected" onclick="setTab('old_rejected',this)">قديمة — مرفوضة <span class="cnt" id="cnt-old_rejected">0</span></button>
@@ -1275,7 +1389,7 @@ footer{text-align:center;margin-top:26px;font-size:11.5px;color:var(--soft)}
 <script>
 var API="/returns/api/requests";
 var DATA=[];
-var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض",done_salla:"تم التعميد من المشتريات"};
+var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض",done_salla:"تم التعميد من المشتريات",cancelled:"ملغى بطلب العميل"};
 var ME={email:"",allowed_statuses:["will","doing","done","rejected"],is_purchaser:false};
 function canStatus(st){return ME.allowed_statuses&&ME.allowed_statuses.indexOf(st)>=0;}
 function canSalla(){return canStatus("done_salla");}
@@ -1317,6 +1431,7 @@ function inTab(x){
     case "done":         return x.status==="done"     && !isOld(x);
     case "rejected":     return x.status==="rejected" && !isOld(x);
     case "done_salla":   return x.status==="done_salla";
+    case "cancelled":    return x.status==="cancelled";
     case "old_done":     return x.status==="done"     &&  isOld(x);
     case "old_rejected": return x.status==="rejected" &&  isOld(x);
     case "issues":       return !!x.issue_type && x.status!=="done";
@@ -1324,7 +1439,7 @@ function inTab(x){
   }
 }
 function updateCounts(){
-  var c={new:0,will:0,doing:0,done:0,rejected:0,done_salla:0,old_done:0,old_rejected:0,issues:0};
+  var c={new:0,will:0,doing:0,done:0,rejected:0,done_salla:0,cancelled:0,old_done:0,old_rejected:0,issues:0};
   DATA.forEach(function(x){
     var old=isOld(x);
     if(x.issue_type && x.status!=="done")c.issues++;
@@ -1334,11 +1449,13 @@ function updateCounts(){
     else if(x.status==="done"){ old?c.old_done++:c.done++; }
     else if(x.status==="rejected"){ old?c.old_rejected++:c.rejected++; }
     else if(x.status==="done_salla")c.done_salla++;
+    else if(x.status==="cancelled")c.cancelled++;
   });
   var set=function(id,n){var e=document.getElementById(id);if(e)e.textContent=n};
   set("cnt-new",c.new);set("cnt-will",c.will);set("cnt-doing",c.doing);
   set("cnt-done",c.done);set("cnt-rejected",c.rejected);set("cnt-done_salla",c.done_salla);
   set("cnt-old_done",c.old_done);set("cnt-old_rejected",c.old_rejected);
+  set("cnt-cancelled",c.cancelled);
   set("cnt-all",DATA.length);
   set("cnt-issues",c.issues);
 }
@@ -1413,6 +1530,7 @@ function render(){
   e.style.display="none";
   g.innerHTML=list.map(card).join("");
   loadStockHints();
+  loadWhReturns();
 }
 // ---------------------------------------------------------------------------
 // stock-hint 2026-09-06 — تنبيه توفر الصنف في مستودع السعودية
@@ -1445,6 +1563,42 @@ function loadStockHints(){
     fetch("/returns/api/stock-hint?order_number="+encodeURIComponent(on),{credentials:"same-origin"})
       .then(function(r){return r.ok?r.json():null})
       .then(function(d){STOCK_CACHE[on]=d;fillStock(slot,d)})
+      .catch(function(){slot.remove()});
+  });
+}
+// ---------------------------------------------------------------------------
+// warehouse-return 2026-10-28 — هل وصل المرتجع لمستودع جدة؟ (من لوحة التوصيل في CN-Ops)
+// يراه المحاسب قبل صرف المبلغ. معلومة فقط — لا يغيّر حالة ولا صلاحية. أي فشل = صمت.
+// ---------------------------------------------------------------------------
+var WH_CACHE={};
+function whDate(s){if(!s)return "";var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);return m?(m[3]+"/"+m[2]+"/"+m[1]):""}
+function whUnits(r){return (r.units_received!=null&&r.units_received!==r.units_requested)?(' · وصل '+r.units_received+' من '+r.units_requested):''}
+function whRibbon(d,st){
+  if(!d||!d.checked)return "";
+  var r=d.return;
+  if(!r){
+    // لا مرتجع مسجّل في المستودع: يُنبَّه فقط ما دام المبلغ لم يُصرف بعد
+    if(st==="done"||st==="rejected")return "";
+    return '<div class="ribbon-wh wh-none">المستودع: لم يُسجَّل وصول المرتجع بعد</div>';
+  }
+  var note=r.condition_note?(' — '+esc(r.condition_note)):'';
+  if(r.status==="awaiting")return '<div class="ribbon-wh wh-wait">المستودع: بانتظار وصول المرتجع<span class="sk">سُجّل '+esc(whDate(r.requested_at))+'</span></div>';
+  if(r.status==="cancelled")return '<div class="ribbon-wh wh-none">ألغى المستودع تسجيل المرتجع<span class="sk">'+esc(r.cancel_reason||"")+'</span></div>';
+  var bad=r.condition==="damaged"||r.decision==="damaged";
+  var head=r.status==="closed"
+    ?(r.decision==="damaged"?'وصل المرتجع للمستودع تالفاً — في موقع «تالف»':'وصل المرتجع للمستودع ودخل المخزون')
+    :'وصل المرتجع للمستودع — بانتظار قرار المخزون';
+  return '<div class="ribbon-wh '+(bad||r.condition==="partial"?'wh-bad':'wh-ok')+'">'+head+
+         '<span class="sk">'+esc(whDate(r.received_at))+(r.condition_ar?(' · الفحص: '+esc(r.condition_ar)):'')+esc(whUnits(r))+note+'</span></div>';
+}
+function loadWhReturns(){
+  [].slice.call(document.querySelectorAll(".whslot")).forEach(function(slot){
+    var on=slot.getAttribute("data-order")||"", st=slot.getAttribute("data-st")||"";
+    function fill(d){var h=whRibbon(d,st);if(h)slot.outerHTML=h;else slot.remove()}
+    if(WH_CACHE[on]!==undefined){fill(WH_CACHE[on]);return}
+    fetch("/returns/api/warehouse-return?order_number="+encodeURIComponent(on),{credentials:"same-origin"})
+      .then(function(r){return r.ok?r.json():null})
+      .then(function(d){WH_CACHE[on]=d;fill(d)})
       .catch(function(){slot.remove()});
   });
 }
@@ -1498,7 +1652,7 @@ function refundRows(x){
 function card(x){
   var isNew=isRecentOrder(x.original_order_at);
   var order=x.order_number?('<a class="olink ltr" href="#" onclick="return orderClick(\''+esc(x.order_number)+'\')">'+esc(x.order_number)+'</a>'):"—";
-  var histRows=(x.status_history||[]).map(function(h){return '<div><b>'+esc(h.label)+'</b> · '+esc((h.at||"").replace("T"," ").slice(0,16))+' · '+esc(h.by||"")+'</div>'}).join("");
+  var histRows=(x.status_history||[]).map(function(h){return '<div><b>'+esc(h.label)+'</b> · '+esc((h.at||"").replace("T"," ").slice(0,16))+' · '+esc(h.by||"")+(h.status==="cancelled"&&h.note?(' — '+esc(h.note)):'')+'</div>'}).join("");
   var issueBanner = x.issue_type
     ? ('<div class="ibanner i-'+esc(x.issue_type)+'">'+(x.issue_type==="case"?"\u2696":"\u26A0")+' '
        + esc(x.issue_type==="case"?"قضية":"شكوى")
@@ -1509,7 +1663,8 @@ function card(x){
   return '<div class="card'+(isNew?' is-new':'')+(x.issue_type?' has-issue':'')+'">'+
     issueBanner+
     (isNew?'<div class="ribbon-new">طلب منتج جديد</div>':'')+
-    (x.status==="done"?'':'<div class="stkslot" data-order="'+esc(x.order_number||'')+'"></div>')+
+    ((x.status==="done"||x.status==="cancelled")?'':'<div class="stkslot" data-order="'+esc(x.order_number||'')+'"></div>')+
+    ((["new","will","doing","done_salla"].indexOf(x.status)<0||!x.order_number)?'':'<div class="whslot" data-order="'+esc(x.order_number)+'" data-st="'+esc(x.status)+'"></div>')+
     '<div class="chead"><span class="nm">'+esc(x.customer_name||"—")+'</span><span class="st '+x.status+'">'+esc(SL[x.status]||x.status)+'</span></div>'+
     '<div class="cbody">'+
       '<div class="rowf"><span class="k">اسم العميل</span><span class="v">'+esc(x.customer_name||"—")+'</span></div>'+
@@ -1527,6 +1682,10 @@ function card(x){
       (x.status==="rejected"
         ? ('<div class="locked">\uD83D\uDD12 هذا الطلب <b>مرفوض نهائياً</b> ولا يمكن تغيير حالته.<br>'+
            '<span>لإعادة فتحه يجب على خدمة العملاء رفع طلب إرجاع جديد من الشات.</span></div>')
+      : x.status==="cancelled"
+        ? ('<div class="cx-final">\u2715 <b>ملغى بطلب العميل</b> — لا يرغب العميل بالإرجاع. للعرض فقط، لا يمكن تغيير حالته.'+
+           '<br>السبب: <b>'+esc(x.cancel_reason||"—")+'</b>'+
+           '<br><span style="font-weight:500">ألغاه: '+esc(x.cancelled_by||"—")+(x.cancelled_at?(' · '+esc(String(x.cancelled_at).replace("T"," ").slice(0,16))):'')+'</span></div>')
       : x.status==="done"
         ? ('<div class="done-final">\u2705 هذا الطلب <b>منتهٍ مالياً (تم الإرجاع)</b> — للعرض فقط، لا يمكن تغيير حالته.</div>')
         : (function(){
@@ -1689,7 +1848,8 @@ _TEAM_COLUMNS = """id, conversation_id, customer_name, order_number, reason,
                    status, accountant_note, reject_reason, assignee,
                    receipt_name, status_history, return_created_at, created_at,
                    updated_at, contacted_at, refund_method,
-                   issue_type, issue_note, issue_marked_by, issue_marked_at"""
+                   issue_type, issue_note, issue_marked_by, issue_marked_at,
+                   cancel_reason, cancelled_by, cancelled_at"""
 
 
 def _parse_ymd(value, label):
@@ -1773,7 +1933,7 @@ async def team_requests(
         for k in ("return_created_at",):
             if d.get(k) is not None:
                 d[k] = d[k].isoformat()
-        for k in ("created_at", "updated_at", "contacted_at", "issue_marked_at"):
+        for k in ("created_at", "updated_at", "contacted_at", "issue_marked_at", "cancelled_at"):
             if d.get(k) is not None:
                 d[k] = d[k].isoformat()
         if isinstance(d.get("status_history"), str):
@@ -1836,7 +1996,7 @@ def _build_returns_workbook(rows, period_label: str):
         ("#", 7), ("رقم المحادثة", 13), ("العميل", 22), ("رقم الطلب", 15),
         ("سبب الإرجاع", 26), ("طريقة الاسترداد", 16), ("الحالة", 16),
         ("شكوى / قضية", 13), ("تفاصيل الشكوى", 28), ("عُلّمت بواسطة", 14),
-        ("ملاحظة المحاسب", 30), ("سبب الرفض", 26), ("الموظف", 12),
+        ("ملاحظة المحاسب", 30), ("سبب الرفض / الإلغاء", 26), ("الموظف", 12),
         ("إيصال التحويل", 12), ("تم التواصل", 14),
         ("تاريخ الإنشاء", 14), ("تاريخ إنشاء الإرجاع", 16), ("آخر تحديث", 16),
     ]
@@ -1913,7 +2073,7 @@ def _build_returns_workbook(rows, period_label: str):
             (r["issue_note"] or "—").strip(),
             (r["issue_marked_by"] or "—").strip(),
             (r["accountant_note"] or "—").strip(),
-            (r["reject_reason"] or "—").strip(),
+            ((r["cancel_reason"] if r["status"] == "cancelled" else r["reject_reason"]) or "—").strip(),
             (r["assignee"] or "—").strip() or "—",
             "نعم" if r["receipt_name"] else "لا",
             _fmt_dt(r["contacted_at"], True),
@@ -2139,7 +2299,14 @@ tr.rejrow{background:var(--rejsoft)}
 .b-rejected{background:var(--rejsoft);color:var(--rej)}
 .b-done_salla{background:#eef4ff;color:#3b5bdb}
 .b-rejected_contacted{background:#eef1f4;color:#5a6b7d;border:1px solid #d7dde4}
+.b-cancelled{background:#f1eef6;color:#6b5b86;border:1px solid #ddd5ea}
+.cancel-btn{font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;border-radius:8px;padding:4px 10px;background:#fff;color:#6b5b86;border:1px solid #ddd5ea;white-space:nowrap;transition:.15s}
+.cancel-btn:hover{background:#f1eef6}
+tr.cxrow td{background:#faf9fc;color:#7a7f88}
+.cxwho{font-size:10.5px;color:var(--soft);margin-top:3px}
 /* stock-hint 2026-09-06 — شارة توفر الصنف في مستودع السعودية */
+.whb{display:inline-block;margin-top:4px;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;line-height:1.7;white-space:nowrap}
+.whb.w{background:#fff6e5;color:#9a6200}.whb.o{background:#e9f7ef;color:#1e7a45}.whb.b{background:#fdecec;color:#b42318}
 .stkb{display:inline-block;margin-top:4px;background:linear-gradient(90deg,#b9770e,#e59f1a);color:#fff;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;line-height:1.7;direction:rtl;white-space:nowrap}
 .stkb .l{font-weight:600;opacity:.95}
 tr.contactedrow{background:#fbfcfd}
@@ -2197,6 +2364,7 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
     <button class="tab" data-tab="doing" onclick="setTab('doing',this)">جاري الإرجاع <span class="cnt" id="tcnt-doing">0</span></button>
     <button class="tab" data-tab="done" onclick="setTab('done',this)">تم الإرجاع <span class="cnt" id="tcnt-done">0</span></button>
     <button class="tab" data-tab="rejected" onclick="setTab('rejected',this)">مرفوض <span class="cnt" id="tcnt-rejected">0</span></button>
+    <button class="tab" data-tab="cancelled" onclick="setTab('cancelled',this)">ملغاة بطلب العميل <span class="cnt" id="tcnt-cancelled">0</span></button>
     <button class="tab tab-old" data-tab="old_done" onclick="setTab('old_done',this)">قديمة — تم الإرجاع <span class="cnt" id="tcnt-old_done">0</span></button>
     <button class="tab tab-old" data-tab="old_rejected" onclick="setTab('old_rejected',this)">قديمة — مرفوضة <span class="cnt" id="tcnt-old_rejected">0</span></button>
     <button class="tab tab-issue" data-tab="issues" onclick="setTab('issues',this)">&#9873; شكاوى وقضايا <span class="cnt" id="tcnt-issues">0</span></button>
@@ -2216,7 +2384,7 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
     <table>
       <thead><tr>
         <th>رقم المحادثة</th><th>العميل</th><th>رقم الطلب</th><th>سبب الإرجاع</th>
-        <th>طريقة الاسترداد</th><th>الحالة</th><th>شكوى / قضية</th><th>ملاحظة المحاسب</th><th>سبب الرفض</th><th>إيصال التحويل</th><th>الموظف</th><th>إجراء</th>
+        <th>طريقة الاسترداد</th><th>الحالة</th><th>شكوى / قضية</th><th>ملاحظة المحاسب</th><th>سبب الرفض / الإلغاء</th><th>إيصال التحويل</th><th>الموظف</th><th>إجراء</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -2240,6 +2408,18 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
     </div>
   </div>
 </div>
+<div class="modal-bg" id="cmodal">
+  <div class="modal">
+    <h3>إلغاء طلب الإرجاع</h3>
+    <p class="sub" id="csub"></p>
+    <p class="sub" style="color:#6b5b86">يُستخدم عندما لا يرغب العميل بالإرجاع. الإلغاء نهائي ويظهر لكامل الفريق والمحاسب.</p>
+    <textarea id="creason" placeholder="سبب الإلغاء (إلزامي)…"></textarea>
+    <div class="acts">
+      <button class="btn-save" id="csave" style="background:#6b5b86" onclick="saveCancel()">تأكيد الإلغاء</button>
+      <button class="btn-cancel" onclick="closeCancel()">تراجع</button>
+    </div>
+  </div>
+</div>
 <script>
 var API="/returns/api/team-requests";
 var EMAIL="financial@qaydao.com";
@@ -2257,7 +2437,7 @@ var EMAIL="financial@qaydao.com";
   }
 })();
 var DATA=[];
-var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض",done_salla:"تم التعميد من المشتريات"};
+var SL={new:"جديد",will:"سيتم الإرجاع",doing:"جاري الإرجاع",done:"تم الإرجاع",rejected:"مرفوض",done_salla:"تم التعميد من المشتريات",cancelled:"ملغى بطلب العميل"};
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function load(){fetch(API).then(function(r){return r.json()}).then(function(d){DATA=Array.isArray(d)?d:[];render()}).catch(function(){})}
 var CURAGENT="";  // "" = الكل
@@ -2286,6 +2466,7 @@ function inTab(x){
     case "rejected":     return x.status==="rejected" && !isOld(x);
     case "old_done":     return x.status==="done"     &&  isOld(x);
     case "old_rejected": return x.status==="rejected" &&  isOld(x);
+    case "cancelled":    return x.status==="cancelled";
     case "issues":       return !!x.issue_type && x.status!=="done";
     default:             return true;
   }
@@ -2298,7 +2479,7 @@ function setTab(t,btn){
   render();
 }
 function updateTabCounts(scope){
-  var c={all:scope.length,new:0,will:0,doing:0,done:0,rejected:0,old_done:0,old_rejected:0,issues:0};
+  var c={all:scope.length,new:0,will:0,doing:0,done:0,rejected:0,cancelled:0,old_done:0,old_rejected:0,issues:0};
   scope.forEach(function(x){
     var o=isOld(x);
     if(x.issue_type && x.status!=="done")c.issues++;
@@ -2307,6 +2488,7 @@ function updateTabCounts(scope){
     else if(x.status==="doing")c.doing++;
     else if(x.status==="done"){o?c.old_done++:c.done++}
     else if(x.status==="rejected"){o?c.old_rejected++:c.rejected++}
+    else if(x.status==="cancelled")c.cancelled++;
   });
   Object.keys(c).forEach(function(k){
     var e=document.getElementById("tcnt-"+k);if(e)e.textContent=c[k];
@@ -2423,6 +2605,7 @@ function render(){
   e.style.display="none";
   tb.innerHTML=list.map(row).join("");
   loadStockHintsT();
+  loadWhReturnsT();
 }
 // ---------------------------------------------------------------------------
 // stock-hint 2026-09-06 — شارة توفر الصنف في مستودع السعودية (صفحة الفريق)
@@ -2437,6 +2620,29 @@ function stockBadgeT(d){
   var more=d.count>1?(" +"+(d.count-1)):"";
   return '<span class="stkb">\uD83D\uDCE6 بالمستودع'+esc(more)+
          ' <span class="l">'+esc(it.code||"")+' \u00B7 '+esc(String(it.available))+'</span></span>';
+}
+// warehouse-return 2026-10-28 — شارة وصول المرتجع لمستودع جدة (صفحة الفريق)
+var WH_CACHE_T={};
+function whBadgeT(d){
+  if(!d||!d.checked||!d.return)return "";
+  var r=d.return, cls="whb", t;
+  if(r.status==="awaiting"){t="\u21A9 بانتظار وصول المرتجع";cls+=" w"}
+  else if(r.status==="cancelled")return "";
+  else if(r.decision==="damaged"||r.condition==="damaged"){t="\u21A9 وصل المستودع تالفاً";cls+=" b"}
+  else if(r.condition==="partial"){t="\u21A9 وصل ناقصاً ("+r.units_received+"/"+r.units_requested+")";cls+=" b"}
+  else {t=r.status==="closed"?"\u21A9 وصل المستودع ودخل المخزون":"\u21A9 وصل المستودع";cls+=" o"}
+  return '<span class="'+cls+'">'+esc(t)+'</span>';
+}
+function loadWhReturnsT(){
+  [].slice.call(document.querySelectorAll(".whslotT")).forEach(function(slot){
+    var on=slot.getAttribute("data-order")||"";
+    function fill(d){var h=whBadgeT(d);if(h)slot.outerHTML=h;else slot.remove()}
+    if(WH_CACHE_T[on]!==undefined){fill(WH_CACHE_T[on]);return}
+    fetch("/returns/api/warehouse-return?order_number="+encodeURIComponent(on),{credentials:"same-origin"})
+      .then(function(r){return r.ok?r.json():null})
+      .then(function(d){WH_CACHE_T[on]=d;fill(d)})
+      .catch(function(){slot.remove()});
+  });
 }
 function loadStockHintsT(){
   [].slice.call(document.querySelectorAll(".stkslotT")).forEach(function(slot){
@@ -2459,13 +2665,20 @@ function row(x){
     ? '<span class="badge b-rejected_contacted">مرفوض — تم التواصل</span>'
     : '<span class="badge b-'+esc(x.status)+'">'+esc(SL[x.status]||x.status)+'</span>';
   // reject-reason cell: keep the "email the accountant" hint only while still open
-  var rejCell = rej
+  var cx=x.status==="cancelled";
+  var rejCell = cx
+    ? (esc(x.cancel_reason||"—") + '<div class="cxwho">ألغاه: '+esc(x.cancelled_by||"—")+'</div>')
+    : rej
     ? (esc(x.reject_reason||"—") + (openRej ? '<br><span style="font-size:11px">\u26A0 تواصل مع المحاسب بالإيميل</span>' : ''))
     : '—';
   // action cell: "تم التواصل" button only for still-open rejected requests
   var action='—';
   if(openRej){
     action='<button class="contact-btn" onclick="markContacted('+x.id+',this)">\u2713 تم التواصل</button>';
+  }else if(x.status==="new"||x.status==="done_salla"){
+    action='<button class="cancel-btn" onclick="openCancel('+x.id+')">\u2715 إلغاء الطلب</button>';
+  }else if(cx){
+    action='<span class="contact-done">ملغى</span>';
   }else if(contacted){
     action='<span class="contact-done">\u2713 تمت المتابعة</span>';
   }
@@ -2475,14 +2688,16 @@ function row(x){
        + '<div class="iby">'+esc(x.issue_marked_by||"")+'</div>'
        + '<button class="flag-btn edit" onclick="openIssue('+x.id+')">تعديل</button>')
     : '<button class="flag-btn" onclick="openIssue('+x.id+')">\u2691 تعليم</button>';
-  var rowCls = x.issue_type ? "issuerow" : (openRej?"rejrow":(contacted?"contactedrow":""));
+  var rowCls = cx ? "cxrow" : (x.issue_type ? "issuerow" : (openRej?"rejrow":(contacted?"contactedrow":"")));
   return '<tr class="'+rowCls+'">'+
     '<td class="ltr">'+esc(x.conversation_id||"—")+'</td>'+
     '<td>'+esc(x.customer_name||"—")+'</td>'+
     '<td class="ltr">'+esc(x.order_number||"—")+
       // rami 2026-09-06: الطلب المنتهي مالياً (done) أُرجع مبلغه فعلاً ⇒ لا شارة
-      ((x.status!=="done" && x.order_number)
-        ? '<div class="stkslotT" data-order="'+esc(x.order_number)+'"></div>' : '')+'</td>'+
+      ((x.status!=="done" && x.status!=="cancelled" && x.order_number)
+        ? '<div class="stkslotT" data-order="'+esc(x.order_number)+'"></div>' : '')+
+      // قبل صرف المبلغ فقط (المفتوحة) — لا طلبات زائدة على الطلبات المنتهية
+      ((["new","will","doing","done_salla"].indexOf(x.status)>=0 && x.order_number) ? '<div class="whslotT" data-order="'+esc(x.order_number)+'"></div>' : '')+'</td>'+
     '<td>'+esc(x.reason||"—")+'</td>'+
     '<td>'+esc(x.refund_method_label||"—")+'</td>'+
     '<td>'+badge+'</td>'+
@@ -2539,6 +2754,36 @@ function whoAmI(){
   return CURAGENT || "الفريق";
 }
 
+
+// ── Cancel by customer request (CS team) — allowed only before the accountant starts.
+var CRID=null;
+function cancelWho(){
+  var a="";try{a=(new URLSearchParams(location.search).get("agent")||"").trim()}catch(e){}
+  return a || CURAGENT || "الفريق";
+}
+function openCancel(id){
+  CRID=id;var x=null;
+  for(var i=0;i<DATA.length;i++){if(DATA[i].id===id){x=DATA[i];break}}
+  document.getElementById("creason").value="";
+  document.getElementById("csub").textContent="الطلب #"+id+(x&&x.customer_name?(" — "+x.customer_name):"")+(x&&x.order_number?(" — "+x.order_number):"");
+  document.getElementById("cmodal").classList.add("show");
+  setTimeout(function(){document.getElementById("creason").focus()},50);
+}
+function closeCancel(){document.getElementById("cmodal").classList.remove("show");CRID=null}
+function saveCancel(){
+  if(CRID===null)return;
+  var reason=document.getElementById("creason").value.trim();
+  if(!reason){alert("سبب الإلغاء مطلوب.");document.getElementById("creason").focus();return}
+  var btn=document.getElementById("csave");
+  btn.disabled=true;var old=btn.textContent;btn.textContent="جارٍ الإلغاء…";
+  fetch("/returns/api/requests/"+CRID+"/cancel",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({reason:reason,cancelled_by:cancelWho()})
+  }).then(function(r){if(!r.ok)return r.json().then(function(e){throw {msg:(e&&e.detail)||("HTTP "+r.status)}});return r.json()})
+    .then(function(){closeCancel();load()})
+    .catch(function(e){alert((e&&e.msg)||"تعذّر الإلغاء")})
+    .finally(function(){btn.disabled=false;btn.textContent=old});
+}
 function markContacted(id,btn){
   btn.disabled=true;btn.textContent="جارٍ…";
   fetch(API.replace("/team-requests","")+"/requests/"+id+"/contacted",{method:"POST"})

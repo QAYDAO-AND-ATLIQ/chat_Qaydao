@@ -215,3 +215,12 @@ md5sum injection/qaydao-returns-tab.js /var/www/qaydao-injection/qaydao-returns-
 - ❌ لا تلمس Chatwoot ولا قاعدة بياناته إطلاقاً.
 - ❌ لا تحفظ أي أسرار/كلمات مرور في Git (`.env` مستثنى عبر `.gitignore`).
 - ✅ أي تعديل داخل `returns-service` وقاعدة `returns` فقط.
+
+## إلغاء الطلب بطلب العميل (2026-09-15)
+- الحالة `cancelled` = «ملغى بطلب العميل» — نهائية (set_status ورفع الإيصال يرفضانها 409).
+- `POST /returns/api/requests/{id}/cancel` — body `{reason, cancelled_by}`؛ السبب إلزامي (400).
+- مسموح **فقط** على `new` و`done_salla` (قبل بدء المحاسب)؛ غير ذلك 409. قرار رامي.
+- أعمدة: `cancel_reason`, `cancelled_by`, `cancelled_at` (migrations/003_cancel.sql).
+- صفحة الفريق: زر «إلغاء الطلب» + نافذة السبب + تبويب «ملغاة بطلب العميل». اسم الموظف من `?agent=` ثم فلتر الموظف ثم «الفريق».
+- صفحة المحاسب/المشتريات: تبويب «ملغاة» + بطاقة `cx-final` قراءة فقط بلا أزرار.
+- الطلب الملغى لا يمنع رفع طلب جديد لنفس المحادثة. التصدير: عمود «سبب الرفض / الإلغاء».
