@@ -112,6 +112,7 @@ async def _startup():
             async with p.acquire() as c:
                 await c.execute("SELECT 1")
                 await _ensure_auth_tables(c)
+                await _ensure_team_auth_tables(c)
             return
         except Exception:
             await asyncio.sleep(1)
@@ -159,6 +160,187 @@ async def current_user(token: Optional[str]) -> Optional[dict]:
 def _require_login_redirect():
     # for HTML pages: send to login
     return RedirectResponse(url="/accountant-login", status_code=302)
+
+
+# ------------------------- Team page auth (2026-11-04) -------------------------
+# PDPL: /returns/team-requests and its API were open to anyone on the internet
+# (customer names, order numbers, Excel export). They now require ONE of:
+#   - a team session created by «الدخول عبر فريقي» (Fariqi = identity provider:
+#     signed link email|exp|nonce, HMAC-SHA256 with RETURNS_SSO_SECRET, ±300 s, one-time nonce),
+#   - an accountant session (existing /accountant-login),
+#   - the service token (Authorization: Bearer RETURNS_TEAM_API_TOKEN) — Fariqi's server-side client.
+# TEAM_AUTH_REQUIRED=0 restores the old open behaviour (rollback switch only).
+import hmac as _hmac
+import hashlib as _hashlib
+import time as _time
+from urllib.parse import quote as _quote
+from fastapi import Depends
+
+TEAM_COOKIE = "returns_team_session"
+TEAM_SESSION_HOURS = int(os.getenv("TEAM_SESSION_HOURS", "12"))
+RETURNS_SSO_SECRET = os.getenv("RETURNS_SSO_SECRET", "")
+FARIQI_SSO_URL = os.getenv("FARIQI_SSO_URL", "https://rami.qaydao.com/staff/sso/returns")
+TEAM_API_TOKEN = os.getenv("RETURNS_TEAM_API_TOKEN", "")
+TEAM_AUTH_REQUIRED = os.getenv("TEAM_AUTH_REQUIRED", "1") != "0"
+TEAM_SSO_DOMAINS = tuple(d.strip().lower() for d in os.getenv("TEAM_SSO_DOMAINS", "qaydao.com").split(",") if d.strip())
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1") != "0"
+NEXT_COOKIE = "returns_next"
+
+
+async def _ensure_team_auth_tables(c):
+    await c.execute("""
+        CREATE TABLE IF NOT EXISTS team_sessions (
+            token TEXT PRIMARY KEY, email TEXT NOT NULL, display_name TEXT,
+            expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+        CREATE INDEX IF NOT EXISTS idx_team_sess_expires ON team_sessions(expires_at);
+        CREATE TABLE IF NOT EXISTS sso_nonces (
+            nonce TEXT PRIMARY KEY, used_at TIMESTAMPTZ NOT NULL DEFAULT now());
+    """)
+    await c.execute("DELETE FROM team_sessions WHERE expires_at < now()")
+    await c.execute("DELETE FROM sso_nonces WHERE used_at < now() - interval '1 day'")
+
+
+async def team_identity(request: Request) -> Optional[dict]:
+    if not TEAM_AUTH_REQUIRED:
+        return {"email": None, "display_name": None, "via": "open"}
+    auth = request.headers.get("authorization") or ""
+    bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if TEAM_API_TOKEN and bearer and _hmac.compare_digest(bearer, TEAM_API_TOKEN):
+        return {"email": None, "display_name": "service", "via": "service"}
+    tok = request.cookies.get(TEAM_COOKIE)
+    if tok:
+        p = await pool()
+        async with p.acquire() as c:
+            r = await c.fetchrow(
+                "SELECT email, display_name FROM team_sessions WHERE token=$1 AND expires_at > now()", tok)
+        if r:
+            return {"email": r["email"], "display_name": r["display_name"], "via": "team"}
+    acc = await current_user(request.cookies.get(SESSION_COOKIE))
+    if acc:
+        return {"email": acc.get("email"), "display_name": acc.get("display_name"), "via": "accountant"}
+    return None
+
+
+async def require_team(request: Request) -> dict:
+    who = await team_identity(request)
+    if not who:
+        raise HTTPException(401, "login required")
+    return who
+
+
+async def require_accountant(request: Request) -> dict:
+    acc = await current_user(request.cookies.get(SESSION_COOKIE))
+    if not acc:
+        raise HTTPException(401, "login required")
+    return acc
+
+
+def _team_who(team: Optional[dict]) -> str:
+    if not team:
+        return "team"
+    return (team.get("display_name") or (team.get("email") or "").split("@")[0] or "team")
+
+
+def _safe_next(v: Optional[str]) -> str:
+    v = (v or "").strip()
+    if v.startswith("/returns/team-requests") and "//" not in v and "\\" not in v:
+        return v
+    return "/returns/team-requests"
+
+
+@app.get("/returns/login", response_class=HTMLResponse)
+async def team_login_page(request: Request, next: Optional[str] = None, e: Optional[str] = None):
+    nxt = _safe_next(next)
+    if await team_identity(request):
+        return RedirectResponse(url=nxt, status_code=302)
+    msg = {"expired": "انتهت صلاحية رابط الدخول — أعد المحاولة.",
+           "invalid": "تعذّر التحقق من رابط الدخول.",
+           "domain": "هذا الحساب غير مخوّل لهذه الصفحة."}.get(e or "", "")
+    html = TEAM_LOGIN_HTML.replace("__SSO__", FARIQI_SSO_URL).replace(
+        "__MSG__", f'<div class="err">{msg}</div>' if msg else "")
+    resp = HTMLResponse(html, headers={"Cache-Control": "no-store"})
+    resp.set_cookie(NEXT_COOKIE, nxt, max_age=900, httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
+    return resp
+
+
+@app.get("/returns/sso")
+async def team_sso(request: Request, email: str = "", exp: str = "", nonce: str = "", sig: str = ""):
+    if not RETURNS_SSO_SECRET:
+        raise HTTPException(404, "not configured")
+    try:
+        exp_i = int(exp)
+    except ValueError:
+        return RedirectResponse(url="/returns/login?e=invalid", status_code=302)
+    now = int(_time.time())
+    if exp_i < now or exp_i > now + 300:
+        return RedirectResponse(url="/returns/login?e=expired", status_code=302)
+    expected = _hmac.new(RETURNS_SSO_SECRET.encode(), f"{email}|{exp}|{nonce}".encode(), _hashlib.sha256).hexdigest()
+    if not nonce or not sig or not _hmac.compare_digest(expected, sig):
+        return RedirectResponse(url="/returns/login?e=invalid", status_code=302)
+    em = (email or "").strip().lower()
+    if not em or em.rsplit("@", 1)[-1] not in TEAM_SSO_DOMAINS:
+        return RedirectResponse(url="/returns/login?e=domain", status_code=302)
+    token = secrets.token_urlsafe(32)
+    p = await pool()
+    async with p.acquire() as c:
+        used = await c.fetchval("INSERT INTO sso_nonces(nonce) VALUES ($1) ON CONFLICT DO NOTHING RETURNING nonce", nonce)
+        if not used:
+            return RedirectResponse(url="/returns/login?e=invalid", status_code=302)
+        await c.execute(
+            "INSERT INTO team_sessions(token, email, display_name, expires_at) VALUES ($1,$2,$3, now() + make_interval(hours => $4))",
+            token, em, em.split("@")[0], TEAM_SESSION_HOURS)
+    print(f"[team-sso] session for {em}", flush=True)
+    resp = RedirectResponse(url=_safe_next(request.cookies.get(NEXT_COOKIE)), status_code=302)
+    resp.set_cookie(TEAM_COOKIE, token, max_age=TEAM_SESSION_HOURS * 3600, httponly=True,
+                    secure=COOKIE_SECURE, samesite="lax", path="/")
+    resp.delete_cookie(NEXT_COOKIE, path="/")
+    return resp
+
+
+@app.get("/returns/logout")
+async def team_logout(request: Request):
+    tok = request.cookies.get(TEAM_COOKIE)
+    if tok:
+        p = await pool()
+        async with p.acquire() as c:
+            await c.execute("DELETE FROM team_sessions WHERE token=$1", tok)
+    resp = RedirectResponse(url="/returns/login", status_code=302)
+    resp.delete_cookie(TEAM_COOKIE, path="/")
+    return resp
+
+
+@app.get("/returns/api/team-me")
+async def team_me(team: dict = Depends(require_team)):
+    return {"email": team.get("email"), "display_name": team.get("display_name"), "via": team.get("via")}
+
+
+TEAM_LOGIN_HTML = r"""<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>الدخول — طلبات المرجعات — QAYDAO</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Cairo,system-ui,sans-serif;background:#f4f6f8;color:#1f2b3a;min-height:100vh;display:grid;place-items:center;padding:20px}
+.card{background:#fff;border:1px solid #e4e9ee;border-radius:16px;max-width:400px;width:100%;padding:30px 26px;text-align:center}
+.logo{width:48px;height:48px;border-radius:12px;background:#1f5f5b;color:#fff;display:grid;place-items:center;font-weight:800;font-size:20px;margin:0 auto 14px}
+h1{font-size:19px;font-weight:800;margin-bottom:6px}
+p{font-size:13.5px;color:#5a6b7d;line-height:1.8;margin-bottom:20px}
+.btn{display:block;background:#1f5f5b;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:12px;border-radius:10px}
+.btn:hover{background:#174a47}
+.alt{display:inline-block;margin-top:16px;font-size:12.5px;color:#5a6b7d}
+.err{background:#fdeded;color:#c0392b;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:14px}
+</style></head><body>
+<div class="card">
+  <div class="logo">Q</div>
+  <h1>طلبات المرجعات — فريق خدمة العملاء</h1>
+  <p>الصفحة تحوي بيانات عملاء، فالدخول بحسابك في فريقي — بلا كلمة مرور جديدة.</p>
+  __MSG__
+  <a class="btn" href="__SSO__">الدخول عبر فريقي</a>
+  <a class="alt" href="/accountant-login">دخول المحاسب</a>
+</div>
+</body></html>"""
 
 
 def row_to_dict(r) -> dict:
@@ -291,7 +473,10 @@ async def list_requests(conversation_id: Optional[int] = None, returns_session: 
     p = await pool()
     async with p.acquire() as c:
         if conversation_id is not None:
-            # single-conversation lookup (used by the CS tab inside Chatwoot to prefill) — open
+            # single-conversation lookup — full row incl. bank data. 2026-11-04: accountant
+            # login required (the CS tab never calls it; it was an open IBAN lookup).
+            if not await current_user(returns_session):
+                raise HTTPException(401, "login required")
             r = await c.fetchrow(
                 "SELECT * FROM return_requests WHERE conversation_id=$1 ORDER BY id DESC LIMIT 1",
                 conversation_id,
@@ -579,7 +764,7 @@ def _build_accountant_workbook(rows, period_label: str, exported_by: str):
     return buf
 
 @app.get("/returns/api/requests/{rid}")
-async def get_request(rid: int):
+async def get_request(rid: int, _acc: dict = Depends(require_accountant)):  # 2026-11-04: full row incl. bank data
     p = await pool()
     async with p.acquire() as c:
         r = await c.fetchrow("SELECT * FROM return_requests WHERE id=$1", rid)
@@ -677,7 +862,7 @@ class IssueIn(BaseModel):
 
 
 @app.post("/returns/api/requests/{rid}/issue")
-async def set_issue(rid: int, body: IssueIn):
+async def set_issue(rid: int, body: IssueIn, team: dict = Depends(require_team)):
     """Flag a return request as a complaint or a legal case — or clear the flag.
 
     CS-team action, same trust model as /contacted: reachable from the team page
@@ -694,7 +879,7 @@ async def set_issue(rid: int, body: IssueIn):
         raise HTTPException(400, "نوع غير صالح — المسموح: complaint أو case")
 
     note = (body.issue_note or "").strip() or None
-    who = (body.marked_by or "").strip() or "team"
+    who = (body.marked_by or "").strip() or _team_who(team)
 
     p = await pool()
     async with p.acquire() as c:
@@ -711,6 +896,7 @@ async def set_issue(rid: int, body: IssueIn):
             "issue_type": t,
             "label": ("إزالة التعليم" if t is None else f"تعليم {ISSUE_LABELS[t]}"),
             "by": who,
+            "by_email": team.get("email"),
             "at": datetime.now(timezone.utc).isoformat(),
         }
         if note:
@@ -733,7 +919,7 @@ async def set_issue(rid: int, body: IssueIn):
     return row_to_dict(out)
 
 @app.post("/returns/api/requests/{rid}/contacted")
-async def mark_contacted(rid: int):
+async def mark_contacted(rid: int, team: dict = Depends(require_team)):
     # CS-team action: the agent confirms they followed up with the accountant about a
     # rejected request. This ONLY records the follow-up timestamp so the red alert stops
     # counting it. It does NOT change the request status (stays 'rejected') and does NOT
@@ -764,7 +950,7 @@ CANCELLABLE_STATUSES = ("new", "done_salla")
 
 
 @app.post("/returns/api/requests/{rid}/cancel")
-async def cancel_request(rid: int, body: CancelIn):
+async def cancel_request(rid: int, body: CancelIn, team: dict = Depends(require_team)):
     # CS-team action: the customer no longer wants the return. Allowed ONLY before
     # the accountant starts the financial track (new / done_salla). Final state —
     # set_status and receipt upload refuse cancelled rows. Same trust model as
@@ -772,7 +958,7 @@ async def cancel_request(rid: int, body: CancelIn):
     reason = (body.reason or "").strip()
     if not reason:
         raise HTTPException(400, "سبب الإلغاء مطلوب")
-    who = (body.cancelled_by or "").strip() or "team"
+    who = (body.cancelled_by or "").strip() or _team_who(team)
     p = await pool()
     async with p.acquire() as c:
         async with c.transaction():
@@ -969,7 +1155,7 @@ async def upload_receipt(rid: int, file: UploadFile = File(...), returns_session
 
 
 @app.get("/returns/api/requests/{rid}/receipt")
-async def download_receipt(rid: int):
+async def download_receipt(rid: int, team: dict = Depends(require_team)):
     # Open: the agent needs it (from the team page) to reply to the customer with proof of transfer.
     p = await pool()
     async with p.acquire() as c:
@@ -1102,7 +1288,7 @@ def _fetch_order_return_blocking(order_number: str) -> dict:
 
 
 @app.get("/returns/api/warehouse-return")
-async def warehouse_return(order_number: str = ""):
+async def warehouse_return(order_number: str = "", team: dict = Depends(require_team)):
     """آخر مرتجع لهذا الطلب في مستودع جدة. {"checked": bool, "found": bool, "return": {...}|null}"""
     import asyncio
     import time
@@ -1944,6 +2130,7 @@ async def _fetch_team_rows(date_from=None, date_to=None, status=None,
 @app.get("/returns/api/team-requests")
 async def team_requests(
     response: Response,
+    team: dict = Depends(require_team),
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     status: Optional[str] = None,
@@ -2202,6 +2389,7 @@ def _build_returns_workbook(rows, period_label: str):
 
 @app.get("/returns/api/team-requests/export")
 async def team_requests_export(
+    team: dict = Depends(require_team),
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     status: Optional[str] = None,
@@ -2256,8 +2444,11 @@ async def team_requests_export(
     )
 
 @app.get("/returns/team-requests", response_class=HTMLResponse)
-async def team_page():
-    return HTMLResponse(TEAM_HTML)
+async def team_page(request: Request):
+    if not await team_identity(request):
+        nxt = request.url.path + (("?" + request.url.query) if request.url.query else "")
+        return RedirectResponse(url="/returns/login?next=" + _quote(nxt, safe=""), status_code=302)
+    return HTMLResponse(TEAM_HTML, headers={"Cache-Control": "no-store"})
 
 
 TEAM_HTML = r"""<!DOCTYPE html>
@@ -2448,6 +2639,15 @@ footer{text-align:center;margin-top:22px;font-size:11.5px;color:var(--soft)}
   </div>
 </div>
 <script>
+/* 2026-11-04: الصفحة محمية — أي 401 من الواجهة يعيد إلى «الدخول عبر فريقي» */
+(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};if(!o.credentials)o.credentials="same-origin";return f(u,o).then(function(r){if(r.status===401&&String(u).indexOf("/returns/api/")===0){location.href="/returns/login?next="+encodeURIComponent(location.pathname+location.search);}return r;});};})();
+var ME=null;
+fetch("/returns/api/team-me").then(function(r){return r.ok?r.json():null}).then(function(m){if(!m)return;ME=m;
+  var who=m.via==="accountant"?(m.display_name||m.email):(m.email||"");if(!who)return;
+  var d=document.createElement("div");d.id="qd-me";
+  d.style.cssText="position:fixed;bottom:12px;left:12px;z-index:50;background:#fff;border:1px solid #e4e9ee;border-radius:999px;padding:5px 12px;font-size:12px;color:#5a6b7d;box-shadow:0 1px 4px rgba(0,0,0,.06)";
+  d.innerHTML='<span class="ltr">'+String(who).replace(/[&<>"]/g,"")+'</span> · <a href="'+(m.via==="accountant"?"/accountant-logout":"/returns/logout")+'" style="color:#1f5f5b;font-weight:700;text-decoration:none">خروج</a>';
+  document.body.appendChild(d);}).catch(function(){});
 var API="/returns/api/team-requests";
 var EMAIL="financial@qaydao.com";
 (function(){
@@ -2777,8 +2977,8 @@ function saveIssue(){
     .finally(function(){btn.disabled=false;btn.textContent=old});
 }
 function whoAmI(){
-  // the team page has no login; the agent filter in the URL is the best signal
-  return CURAGENT || "الفريق";
+  // the agent filter in the URL is the best signal; else the signed-in identity (2026-11-04)
+  return CURAGENT || (ME&&ME.display_name) || "الفريق";
 }
 
 
@@ -2786,7 +2986,7 @@ function whoAmI(){
 var CRID=null;
 function cancelWho(){
   var a="";try{a=(new URLSearchParams(location.search).get("agent")||"").trim()}catch(e){}
-  return a || CURAGENT || "الفريق";
+  return a || CURAGENT || (ME&&ME.display_name) || "الفريق";
 }
 function openCancel(id){
   CRID=id;var x=null;

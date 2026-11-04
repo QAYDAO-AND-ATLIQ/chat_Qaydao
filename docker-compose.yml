@@ -56,6 +56,12 @@ services:
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
       - ./patches/initializers/qaydao_captain_resolution_guard.rb:/app/config/initializers/qaydao_captain_resolution_guard.rb:ro
       - ./patches/initializers/qaydao_csat_human_guard.rb:/app/config/initializers/qaydao_csat_human_guard.rb:ro
+      - ./patches/initializers/qaydao_bot_transfer_dedupe.rb:/app/config/initializers/qaydao_bot_transfer_dedupe.rb:ro
+      # QAYDAO 2026-11-04: unassign/snooze guards, MoC detection, widget email continuity, Instagram changes guard
+      - ./patches/initializers/qaydao_agent_action_guards.rb:/app/config/initializers/qaydao_agent_action_guards.rb:ro
+      - ./patches/initializers/qaydao_moc_detection.rb:/app/config/initializers/qaydao_moc_detection.rb:ro
+      - ./patches/initializers/qaydao_widget_email_continuity.rb:/app/config/initializers/qaydao_widget_email_continuity.rb:ro
+      - ./patches/initializers/qaydao_instagram_changes_guard.rb:/app/config/initializers/qaydao_instagram_changes_guard.rb:ro
       - ./patches/initializers/qaydao_discount_code_guard.rb:/app/config/initializers/qaydao_discount_code_guard.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
       - ./patches/initializers/zz_qaydao_rack_attack_login.rb:/app/config/initializers/zz_qaydao_rack_attack_login.rb:ro
@@ -75,6 +81,7 @@ services:
       - ./patches/enterprise/app/views/api/v1/models/captain/_assistant_response.json.jbuilder:/app/enterprise/app/views/api/v1/models/captain/_assistant_response.json.jbuilder:ro
       - ./patches/enterprise/app/views/api/v1/accounts/captain/assistant_responses/index.json.jbuilder:/app/enterprise/app/views/api/v1/accounts/captain/assistant_responses/index.json.jbuilder:ro
       - ./patches/public/qaydao-faq-review.js:/app/public/qaydao-faq-review.js:ro
+      - ./patches/public/qaydao-action-guard.js:/app/public/qaydao-action-guard.js:ro
 
   chatwoot-sidekiq:
     image: chatwoot/chatwoot:v4.13.0
@@ -104,6 +111,12 @@ services:
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
       - ./patches/initializers/qaydao_captain_resolution_guard.rb:/app/config/initializers/qaydao_captain_resolution_guard.rb:ro
       - ./patches/initializers/qaydao_csat_human_guard.rb:/app/config/initializers/qaydao_csat_human_guard.rb:ro
+      - ./patches/initializers/qaydao_bot_transfer_dedupe.rb:/app/config/initializers/qaydao_bot_transfer_dedupe.rb:ro
+      # QAYDAO 2026-11-04: unassign/snooze guards, MoC detection, widget email continuity, Instagram changes guard
+      - ./patches/initializers/qaydao_agent_action_guards.rb:/app/config/initializers/qaydao_agent_action_guards.rb:ro
+      - ./patches/initializers/qaydao_moc_detection.rb:/app/config/initializers/qaydao_moc_detection.rb:ro
+      - ./patches/initializers/qaydao_widget_email_continuity.rb:/app/config/initializers/qaydao_widget_email_continuity.rb:ro
+      - ./patches/initializers/qaydao_instagram_changes_guard.rb:/app/config/initializers/qaydao_instagram_changes_guard.rb:ro
       - ./patches/initializers/qaydao_discount_code_guard.rb:/app/config/initializers/qaydao_discount_code_guard.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
       - ./patches/initializers/zz_qaydao_rack_attack_login.rb:/app/config/initializers/zz_qaydao_rack_attack_login.rb:ro
@@ -144,6 +157,12 @@ services:
       - ./patches/initializers/qaydao_cron_jobs.rb:/app/config/initializers/qaydao_cron_jobs.rb:ro
       - ./patches/initializers/qaydao_captain_resolution_guard.rb:/app/config/initializers/qaydao_captain_resolution_guard.rb:ro
       - ./patches/initializers/qaydao_csat_human_guard.rb:/app/config/initializers/qaydao_csat_human_guard.rb:ro
+      - ./patches/initializers/qaydao_bot_transfer_dedupe.rb:/app/config/initializers/qaydao_bot_transfer_dedupe.rb:ro
+      # QAYDAO 2026-11-04: unassign/snooze guards, MoC detection, widget email continuity, Instagram changes guard
+      - ./patches/initializers/qaydao_agent_action_guards.rb:/app/config/initializers/qaydao_agent_action_guards.rb:ro
+      - ./patches/initializers/qaydao_moc_detection.rb:/app/config/initializers/qaydao_moc_detection.rb:ro
+      - ./patches/initializers/qaydao_widget_email_continuity.rb:/app/config/initializers/qaydao_widget_email_continuity.rb:ro
+      - ./patches/initializers/qaydao_instagram_changes_guard.rb:/app/config/initializers/qaydao_instagram_changes_guard.rb:ro
       - ./patches/initializers/qaydao_discount_code_guard.rb:/app/config/initializers/qaydao_discount_code_guard.rb:ro
       - ./patches/initializers/qaydao_allow_products_api.rb:/app/config/initializers/qaydao_allow_products_api.rb:ro
       - ./patches/initializers/zz_qaydao_rack_attack_login.rb:/app/config/initializers/zz_qaydao_rack_attack_login.rb:ro
