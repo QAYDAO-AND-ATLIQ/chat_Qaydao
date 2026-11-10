@@ -1,4 +1,5 @@
 """Process Chatwoot webhook events for the widget inbox."""
+import asyncio
 import logging
 import time
 from collections import deque
@@ -13,6 +14,22 @@ log = logging.getLogger("handler")
 
 # In-memory rolling stats
 _events: deque[dict] = deque(maxlen=settings.STATS_BUFFER_SIZE)
+
+# Background tasks (keep refs so they aren't GC'd mid-flight)
+_bg_tasks: set = set()
+
+
+def _spawn(coro) -> None:
+    t = asyncio.create_task(coro)
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+
+
+def _mtype(m: dict) -> int:
+    v = m.get("message_type")
+    if isinstance(v, str):
+        return {"incoming": 0, "outgoing": 1, "activity": 2, "template": 3}.get(v, -1)
+    return v if isinstance(v, int) else -1
 
 
 def record(entry: dict) -> None:
@@ -187,56 +204,13 @@ async def process_webhook(payload: dict[str, Any]) -> dict:
             record(out)
             return out
 
-        # Real send path
-        try:
-            wa_contact = await chatwoot.search_contact_by_phone(phone)
-            if not wa_contact or not wa_contact.get("id"):
-                out["decision"] = "error"
-                out["reason"] = "wa_contact_not_found_in_chatwoot"
-                await dedup.release(phone)
-                record(out)
-                return out
-            wa_contact_id = wa_contact["id"]
-
-            await chatwoot.get_or_create_contact_inbox(
-                wa_contact_id, settings.WHATSAPP_INBOX_ID, phone.replace("+", "")
-            )
-            wa_conv = await chatwoot.create_conversation(
-                settings.WHATSAPP_INBOX_ID, wa_contact_id, phone.replace("+", "")
-            )
-            wa_conv_id = wa_conv.get("id")
-            out["wa_conversation_id"] = wa_conv_id
-
-            send_result = await chatwoot.send_template_message(
-                wa_conv_id,
-                settings.TEMPLATE_NAME,
-                settings.TEMPLATE_LANGUAGE,
-                settings.TEMPLATE_CATEGORY,
-                rendered,
-                processed_params,
-            )
-            out["actions"].append(
-                {"sent_template": settings.TEMPLATE_NAME, "wa_msg_id": send_result.get("id")}
-            )
-
-            if settings.SEND_INTERNAL_NOTE and conv_id:
-                note = (
-                    "📲 تم إرسال رسالة واتساب تلقائية للعميل (خارج الدوام).\n"
-                    f"القالب: {settings.TEMPLATE_NAME} | "
-                    f"محادثة واتساب: #{wa_conv_id}"
-                )
-                try:
-                    await chatwoot.add_internal_note(conv_id, note)
-                    out["actions"].append({"internal_note": "added"})
-                except Exception as ne:
-                    out["actions"].append({"internal_note_failed": str(ne)})
-
-            out["decision"] = "sent"
-        except Exception as send_err:
-            out["decision"] = "error"
-            out["reason"] = f"send_failed: {send_err}"
-            await dedup.release(phone)
-
+        # ---------- Defer the actual send (option B) ----------
+        _spawn(_deferred_ooh_send(
+            widget_conv_id=conv_id, phone=phone, contact_name=contact_name,
+            rendered=rendered, processed_params=processed_params,
+        ))
+        out["decision"] = "scheduled_ooh_send"
+        out["reason"] = f"send_after_{settings.OOH_GRACE_SECONDS}s_unless_replied"
         record(out)
         return out
 
@@ -246,3 +220,90 @@ async def process_webhook(payload: dict[str, Any]) -> dict:
         log.exception("process_webhook fatal")
         record(out)
         return out
+
+
+async def _deferred_ooh_send(*, widget_conv_id, phone, contact_name,
+                             rendered, processed_params) -> None:
+    """After-hours: wait grace, skip if replied (B), else create WA conv with
+    the customer's original inquiry as a private note (A) + send template."""
+    ev: dict[str, Any] = {
+        "decision": "deferred", "widget_conversation_id": widget_conv_id,
+        "phone": phone, "actions": [],
+    }
+    try:
+        await asyncio.sleep(settings.OOH_GRACE_SECONDS)
+        msgs = await chatwoot.get_messages(widget_conv_id)
+
+        # B: skip if AI/agent already replied (public outgoing message)
+        if settings.OOH_SKIP_IF_REPLIED and any(
+            _mtype(m) == 1 and not m.get("private", False) for m in msgs
+        ):
+            ev["decision"] = "skipped_replied"
+            ev["reason"] = "ai_or_agent_replied_within_grace"
+            if settings.SEND_INTERNAL_NOTE:
+                try:
+                    await chatwoot.add_internal_note(
+                        widget_conv_id,
+                        "⏭️ تم تجاوز رسالة الواتساب التلقائية — تم الرد على العميل "
+                        f"خلال {settings.OOH_GRACE_SECONDS} ثانية.")
+                except Exception:
+                    pass
+            record(ev)
+            return  # keep dedup claim (no resend within 24h)
+
+        # A: capture the customer's original inquiry
+        inquiry = next(
+            ((m.get("content") or "").strip() for m in
+             sorted(msgs, key=lambda x: x.get("created_at") or 0)
+             if _mtype(m) == 0 and (m.get("content") or "").strip()), None)
+
+        # create WA conversation + send template
+        wa = await chatwoot.search_contact_by_phone(phone)
+        if not wa or not wa.get("id"):
+            ev["decision"] = "error"
+            ev["reason"] = "wa_contact_not_found_in_chatwoot"
+            await dedup.release(phone)
+            record(ev)
+            return
+        await chatwoot.get_or_create_contact_inbox(
+            wa["id"], settings.WHATSAPP_INBOX_ID, phone.replace("+", ""))
+        wa_conv = await chatwoot.create_conversation(
+            settings.WHATSAPP_INBOX_ID, wa["id"], phone.replace("+", ""))
+        wa_conv_id = wa_conv.get("id")
+        ev["wa_conversation_id"] = wa_conv_id
+
+        # A: inject inquiry as a private note INSIDE the WhatsApp conversation
+        note_a = (f"📩 استفسار العميل (من شات الموقع #{widget_conv_id}):\n«{inquiry}»"
+                  if inquiry else
+                  f"📩 العميل بدأ محادثة على شات الموقع #{widget_conv_id} (بدون نص).")
+        try:
+            await chatwoot.add_internal_note(wa_conv_id, note_a)
+            ev["actions"].append({"inquiry_note": "added"})
+        except Exception as e:
+            ev["actions"].append({"inquiry_note_failed": str(e)})
+
+        send_result = await chatwoot.send_template_message(
+            wa_conv_id, settings.TEMPLATE_NAME, settings.TEMPLATE_LANGUAGE,
+            settings.TEMPLATE_CATEGORY, rendered, processed_params)
+        ev["actions"].append({"sent_template": settings.TEMPLATE_NAME,
+                              "wa_msg_id": send_result.get("id")})
+
+        if settings.SEND_INTERNAL_NOTE:
+            try:
+                await chatwoot.add_internal_note(
+                    widget_conv_id,
+                    "📲 تم إرسال رسالة واتساب تلقائية (خارج الدوام).\n"
+                    f"القالب: {settings.TEMPLATE_NAME} | محادثة واتساب: #{wa_conv_id}")
+                ev["actions"].append({"internal_note": "added"})
+            except Exception as ne:
+                ev["actions"].append({"internal_note_failed": str(ne)})
+
+        ev["decision"] = "sent"
+    except Exception as err:
+        ev["decision"] = "error"
+        ev["reason"] = f"deferred_failed: {err}"
+        try:
+            await dedup.release(phone)
+        except Exception:
+            pass
+    record(ev)

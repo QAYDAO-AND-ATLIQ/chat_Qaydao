@@ -46,6 +46,18 @@ class ChatwootClient:
         r.raise_for_status()
         return r.json().get("payload", {})
 
+    async def get_messages(self, conversation_id: int) -> list[dict]:
+        """Fetch all messages for a conversation."""
+        h = await self.http()
+        url = (
+            f"{self.base}/api/v1/accounts/{self.account}/"
+            f"conversations/{conversation_id}/messages"
+        )
+        r = await h.get(url)
+        r.raise_for_status()
+        data = r.json()
+        return (data.get("payload") or []) if isinstance(data, dict) else (data or [])
+
     async def get_or_create_contact_inbox(
         self, contact_id: int, inbox_id: int, source_id: str
     ) -> dict:
