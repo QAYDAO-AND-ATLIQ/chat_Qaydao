@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 RIYADH = ZoneInfo("Asia/Riyadh")
 ENV_FILE = "/root/chat-qaydao/.env"
 CONV_URL = "https://chat.qaydao.com/app/accounts/1/conversations"
-DEFAULT_TO = ["fay@qaydao.com", "marwa@qaydao.com", "amira@qaydao.com", "omar@qaydao.com"]
+DEFAULT_TO = ["maher@qaydao.com", "marwa@qaydao.com", "amira@qaydao.com"]  # 2026-11-08 قرار رامي: ماهر بدل فئ وعمر (غادرا)
 PG = ["docker", "exec", "chatwoot_postgres", "psql", "-U", "chatwoot_user",
       "-d", "chatwoot_production", "-t", "-A", "-F", "|", "-c"]
 
