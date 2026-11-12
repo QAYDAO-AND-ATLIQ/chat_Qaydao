@@ -11,7 +11,7 @@
   var API = "/returns/api";
   var NAV_ID = "qd-returns-nav-item";
   var REASONS = ["المنتج تالف","المنتج غير مطابق للوصف","وصل منتج مختلف","العميل غيّر رأيه","تأخر التوصيل","مشكلة في المقاس أو اللون","نقص في الطلب","سبب آخر"];
-  var ASSIGNEES = ["في","مروة","أميرة"];   // fallback only; the real list is fetched from Chatwoot
+  var ASSIGNEES = ["ماهر","مروة","أميرة"];   // القائمة المعتمدة لفريق خدمة العملاء (2026-11-12: ماهر بدل فيّ — قرار رامي)
   // طريقة الاسترداد — القيمة المخزّنة (إنجليزي) مقابل ما يراه الموظف (عربي).
   var REFUND_OPTS = [["tabby","تابي"],["tamara","تمارا"],["madfooat","مدفوع"],["bank_account","الحساب البنكي"]];
   var REFUND_REF_METHODS = ["tabby","tamara","madfooat"];
@@ -20,6 +20,8 @@
 
   // Fetch the account's agents from Chatwoot (uses the logged-in agent's cookie).
   function fetchAgents(cb) {
+    // 2026-11-12: القائمة الثابتة هي المرجع — قائمة Chatwoot الحية تضم موظفين غادروا وحسابات نظام.
+    AGENTS_CACHE = ASSIGNEES.slice(); cb(AGENTS_CACHE); return;
     if (AGENTS_CACHE) { cb(AGENTS_CACHE); return; }
     fetch("/api/v1/profile", { credentials: "same-origin", headers: { "Accept": "application/json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
