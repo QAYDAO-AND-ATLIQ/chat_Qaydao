@@ -413,7 +413,7 @@ def _parse_date(v):
 
 
 @app.post("/returns/api/requests")
-async def create_or_update(body: ReturnIn):
+async def create_or_update(body: ReturnIn, team: dict = Depends(require_team)):  # 2026-11-17: الإنشاء من فريقي فقط (رمز الخدمة) — نموذج الشات أُوقف
     validate_refund(body)
     # تطبيع: كل طريقة تحتفظ بحقولها فقط — لا تُخزَّن بيانات بنكية لطلب تابي/تمارا/مدفوع.
     method = (body.refund_method or "").strip()
@@ -1056,7 +1056,7 @@ async def accountant_page(returns_session: Optional[str] = Cookie(None)):
 
 
 @app.post("/returns/api/requests/{rid}/attachment")
-async def upload_attachment(rid: int, file: UploadFile = File(...)):
+async def upload_attachment(rid: int, file: UploadFile = File(...), team: dict = Depends(require_team)):  # 2026-11-17: نفس الحماية
     mime = (file.content_type or "").split(";")[0].strip().lower()
     if mime not in ALLOWED_MIME:
         raise HTTPException(400, "نوع ملف غير مسموح. المسموح: PDF, JPG, PNG, WEBP")

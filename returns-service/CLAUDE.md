@@ -228,3 +228,6 @@ md5sum injection/qaydao-returns-tab.js /var/www/qaydao-injection/qaydao-returns-
 ## 2026-11-17 — نموذج الشات أُوقف: قسم «المرجعات» يفتح فريقي (قرار رامي: مصدر واحد)
 - qaydao-returns-tab.js الجديد (نسخة الحقن + الأصل متزامنان) — زرّا «طلب إرجاع / استرداد» و«الطلبات المرفوعة» يفتحان rami.qaydao.com/staff/orders-returns?tab=returns(&new=1&conv=). النسخة القديمة: /root/deploy_bk_returns_unified_20261116_215114/qaydao-returns-tab.js
 - فريقي يكتب لنفس POST /returns/api/requests (بـ Bearer الخدمة). مقترح لاحق: قصر POST الإنشاء والمرفق على رمز الخدمة (مفتوحان حالياً).
+
+## 2026-11-17 — POST /returns/api/requests و/attachment صارا يتطلبان require_team — منشور (نسخة /root/deploy_bk_tabby_lock_20261116_221736)
+- بلا هوية 401؛ فريقي (Bearer RETURNS_TEAM_API_TOKEN) يعمل. صورة الخدمة السابقة: returns-service-returns_service:pre-lock-20261116_221736. تحذير compose عن اسم مشروع المجلدات طبيعي — نفس returns_uploads/returns_pgdata.
