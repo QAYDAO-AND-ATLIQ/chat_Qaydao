@@ -86,7 +86,9 @@ def validate_refund(body) -> None:
 # management) may ONLY set the financial statuses. No overlap between the two roles.
 ACCOUNTANT_STATUSES = ["will", "doing", "done", "rejected"]
 PURCHASER_STATUSES  = ["done_salla"]
-PURCHASER_EMAILS    = {"pr@qaydao.com"}
+# 2026-11-16 قرار رامي: مصطفى (مدير المشتريات purchasing@) يعتمد المرجعات بصلاحية المشتريات كاملة،
+# وحساب خدمة فريقي للمشتريات ينفّذ قراراته عبر فريقي باسمه. القائمة قابلة للتوسعة من .env.
+PURCHASER_EMAILS    = {"pr@qaydao.com", "purchasing@qaydao.com"} | {e.strip().lower() for e in os.getenv("RETURNS_PURCHASER_EMAILS", "").split(",") if e.strip()}
 
 def allowed_statuses_for(email: str) -> list:
     e = (email or "").lower()
