@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مراجعتي اليوم · QAYDAO AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <style>
+    :root { --ink:#1f2a24; --muted:#6b7570; --line:#e3e7e2; --brand:#4A6152; --brand-2:#7a875c; --soft:#f3f5f1; --warn:#a15c07; }
+    body { font-family:'Cairo',sans-serif; background:#f7f8f6; color:var(--ink); }
+    textarea, input, select, button { font-family:'Cairo',sans-serif; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:14px; }
+    .card.current { border-color:var(--brand); box-shadow:0 0 0 3px rgba(74,97,82,.12); }
+    .bubble { border-radius:12px; padding:10px 14px; line-height:1.9; white-space:pre-wrap; word-break:break-word; font-size:14px; }
+    .b-customer { background:var(--soft); border-inline-start:3px solid #9aa39d; }
+    .b-ai { background:#eef3ee; border-inline-start:3px solid var(--brand); }
+    .b-agent { background:#fbf6ea; border-inline-start:3px solid var(--brand-2); }
+    .lbl { font-size:12px; color:var(--muted); font-weight:600; margin-bottom:4px; }
+    .chip { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:600; padding:2px 10px; border-radius:999px; }
+    .btn { border-radius:10px; padding:8px 16px; font-weight:700; font-size:14px; transition:background .15s, border-color .15s, opacity .15s; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .btn-primary { background:var(--brand); color:#fff; }
+    .btn-primary:hover:not(:disabled) { background:#3c5043; }
+    .btn-ghost { background:#fff; border:1px solid var(--line); color:var(--ink); }
+    .btn-ghost:hover:not(:disabled) { border-color:var(--brand); }
+    .btn-quiet { color:var(--muted); font-weight:600; }
+    .field { width:100%; border:1px solid var(--line); border-radius:10px; padding:8px 12px; font-size:14px; line-height:1.8; background:#fff; }
+    .field:focus { outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(74,97,82,.12); }
+    .bar { height:8px; background:#e7ebe5; border-radius:999px; overflow:hidden; }
+    .bar > span { display:block; height:100%; background:var(--brand); transition:width .4s ease; }
+    :focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+    @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+  </style>
+</head>
+<body x-data="todayApp()" x-init="init()" class="min-h-screen">
+
+<header class="bg-white border-b sticky top-0 z-10" style="border-color:var(--line)">
+  <div class="max-w-3xl mx-auto px-4 py-3">
+    <div class="flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h1 class="text-lg font-extrabold">مراجعتي اليوم</h1>
+        <p class="text-xs" style="color:var(--muted)">
+          <span x-text="dayLabel"></span>
+          <template x-if="me"><span> · <span x-text="me"></span></span></template>
+        </p>
+      </div>
+      <a href="/products/captain" class="btn btn-quiet text-sm shrink-0">لوحة الكابتن ←</a>
+    </div>
+    <div class="mt-3" x-show="total > 0">
+      <div class="flex items-center justify-between text-xs mb-1" style="color:var(--muted)">
+        <span><b style="color:var(--ink)" x-text="done"></b> من <span x-text="total"></span> بنود</span>
+        <span x-text="remainingLabel"></span>
+      </div>
+      <div class="bar" role="progressbar" :aria-valuenow="done" aria-valuemin="0" :aria-valuemax="total">
+        <span :style="`width:${total ? Math.round(done*100/total) : 0}%`"></span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-3xl mx-auto px-4 py-5 space-y-4">
+
+  <div x-show="loading" class="card p-8 text-center text-sm" style="color:var(--muted)">جاري تحميل دفعتك…</div>
+
+  <div x-show="!loading && error" class="card p-5 text-sm" style="border-color:#f3c7c7;background:#fff7f7">
+    <b>تعذّر تحميل الدفعة.</b> <span x-text="error"></span>
+    <button class="btn btn-ghost mr-2" @click="load()">أعد المحاولة</button>
+  </div>
+
+  <div x-show="!loading && !error && !identity" class="card p-5 text-sm leading-7">
+    <b>افتح هذه الصفحة وأنت مسجّل في الشات بحسابك.</b>
+    الإنجاز يُحسب باسم الموظف من حساب الشات، وأنت داخل الآن بكلمة المرور العامة فلا تظهر لك دفعة.
+  </div>
+
+  <div x-show="!loading && !error && identity && total === 0" class="card p-8 text-center">
+    <div class="font-bold mb-1">لا توجد دفعة لك اليوم</div>
+    <div class="text-sm" style="color:var(--muted)">الدفعة تُجهَّز صباحاً مع مهمتك في فريقي. إن كنت تتوقع دفعة اكتب لماهر.</div>
+  </div>
+
+  <div x-show="!loading && identity && total > 0 && done === total" class="card p-6 text-center" style="border-color:var(--brand)">
+    <div class="text-base font-extrabold mb-1">أنجزت دفعة اليوم، شكراً لك</div>
+    <div class="text-sm" style="color:var(--muted)">
+      صحّحت <b x-text="count('corrected')"></b> وأكّدت <b x-text="count('ok')+count('reviewed')"></b>
+      واعتمدت <b x-text="count('approved')"></b> ورفضت <b x-text="count('rejected')+count('deleted')"></b>.
+      مهمتك في فريقي تُغلق تلقائياً.
+    </div>
+  </div>
+
+  <p x-show="!loading && identity && total > 0 && done < total" class="text-sm leading-7" style="color:var(--muted)">
+    كل قرار هنا يتعلّم منه QAYDAO AI مباشرة ويُسجَّل باسمك. إذا كان الرد صحيحاً أكّده،
+    وإذا كان فيه خطأ اكتب الإجابة الصحيحة كما تكتبها للعميل.
+  </p>
+
+  <template x-for="(it, idx) in items" :key="it.id">
+    <section class="card" :class="isCurrent(it) ? 'current' : ''" :id="'item-'+it.id">
+
+      <!-- رأس البند -->
+      <div class="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs font-bold" style="color:var(--muted)" x-text="(idx+1)+'.'"></span>
+          <span class="chip" style="background:var(--soft)" x-text="typeLabel(it.item_type)"></span>
+          <span class="text-xs" style="color:var(--warn)" x-show="it.status==='open' && it.reason" x-text="it.reason"></span>
+        </div>
+        <span x-show="it.status==='done'" class="chip" :style="outcomeStyle(it.outcome)" x-text="outcomeLabel(it)"></span>
+      </div>
+
+      <!-- مكتمل: سطر واحد -->
+      <div x-show="it.status==='done' && !isOpen(it)" class="px-4 pb-3 text-sm flex items-center justify-between gap-3">
+        <span class="truncate" style="color:var(--muted)" x-text="summary(it)"></span>
+        <button class="btn-quiet text-xs shrink-0" @click="expand(it)">عرض</button>
+      </div>
+
+      <div x-show="it.status==='open' || isOpen(it)" class="px-4 pb-4 space-y-3">
+        <template x-if="!it.detail">
+          <div class="text-sm" style="color:var(--muted)">هذا البند لم يعد موجوداً في الشات (ربما حُذف). تجاوزه.</div>
+        </template>
+
+        <!-- ردّ الـAI -->
+        <template x-if="it.item_type==='reply' && it.detail">
+          <div class="space-y-3">
+            <div><div class="lbl">سؤال العميل</div><div class="bubble b-customer" x-text="it.detail.question"></div></div>
+            <div><div class="lbl">ردّ QAYDAO AI</div><div class="bubble b-ai" x-text="it.detail.reply"></div></div>
+            <a class="text-xs font-semibold" style="color:var(--brand)" target="_blank" rel="noopener"
+               :href="convUrl(it.detail.conversation_id)">افتح المحادثة كاملة ↗</a>
+
+            <div x-show="it.status==='open' && !edit[it.id]" class="flex flex-wrap gap-2 pt-1">
+              <button class="btn btn-primary" :disabled="!!busy[it.id]" @click="replyOk(it)">الرد صحيح</button>
+              <button class="btn btn-ghost" :disabled="!!busy[it.id]" @click="openEdit(it)">الرد فيه خطأ، سأصحّحه</button>
+            </div>
+            <div x-show="edit[it.id]" class="space-y-2 pt-1">
+              <label class="block"><span class="lbl block">السؤال كما يسأله العملاء عادةً</span>
+                <input class="field" x-model="form[it.id].q" maxlength="500"></label>
+              <label class="block"><span class="lbl block">الإجابة الصحيحة التي يجب أن يرد بها الـAI</span>
+                <textarea class="field" rows="4" x-model="form[it.id].a" maxlength="2000"
+                  placeholder="اكتبها كما ترسلها للعميل: واضحة ومختصرة وبلا وعود غير مؤكدة"></textarea></label>
+              <div class="flex gap-2">
+                <button class="btn btn-primary" :disabled="!!busy[it.id] || !valid(it)" @click="replyTeach(it)">احفظ التصحيح</button>
+                <button class="btn btn-quiet" @click="edit[it.id]=false">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- اقتراح تعلّم -->
+        <template x-if="it.item_type==='suggestion' && it.detail">
+          <div class="space-y-3">
+            <div><div class="lbl">سأل العميل</div><div class="bubble b-customer" x-text="it.detail.original_question"></div></div>
+            <div><div class="lbl">وردّ <span x-text="it.detail.agent_name || 'الموظف'"></span></div>
+              <div class="bubble b-agent" x-text="it.detail.original_agent_reply"></div></div>
+            <div class="text-xs leading-6" style="color:var(--muted)" x-show="it.detail.ai_reasoning" x-text="'لماذا اقتُرح: '+it.detail.ai_reasoning"></div>
+            <div x-show="it.status==='open'" class="space-y-2">
+              <div class="lbl">ما سيتعلّمه الـAI (عدّله قبل الاعتماد إن لزم)</div>
+              <input class="field" x-model="form[it.id].q" maxlength="500">
+              <textarea class="field" rows="3" x-model="form[it.id].a" maxlength="2000"></textarea>
+              <div x-show="!rejecting[it.id]" class="flex flex-wrap gap-2">
+                <button class="btn btn-primary" :disabled="!!busy[it.id] || !valid(it)" @click="sugApprove(it)">اعتمد ليتعلّمه الـAI</button>
+                <button class="btn btn-ghost" :disabled="!!busy[it.id]" @click="rejecting[it.id]=true">لا يصلح للتعميم</button>
+              </div>
+              <div x-show="rejecting[it.id]" class="flex flex-wrap items-center gap-2">
+                <select class="field" style="width:auto" x-model="form[it.id].reason" aria-label="سبب الرفض">
+                  <option value="">اختر السبب</option>
+                  <option>خاص بعميل أو طلب واحد</option>
+                  <option>المعلومة غير صحيحة أو قديمة</option>
+                  <option>مكرر لسؤال موجود</option>
+                  <option>غير مفيد للعملاء</option>
+                </select>
+                <button class="btn btn-primary" :disabled="!!busy[it.id] || !form[it.id].reason" @click="sugReject(it)">ارفض الاقتراح</button>
+                <button class="btn btn-quiet" @click="rejecting[it.id]=false">رجوع</button>
+              </div>
+            </div>
+            <div x-show="it.status==='done'" class="text-sm"><b x-text="it.detail.suggested_question"></b>
+              <div class="mt-1" style="color:var(--muted)" x-text="it.detail.suggested_answer"></div></div>
+          </div>
+        </template>
+
+        <!-- سؤال شائع -->
+        <template x-if="it.item_type==='faq' && it.detail">
+          <div class="space-y-3">
+            <div x-show="!edit[it.id]" class="space-y-3">
+              <div><div class="lbl">السؤال</div><div class="bubble b-customer" x-text="it.detail.question"></div></div>
+              <div><div class="lbl">إجابة الـAI الحالية</div><div class="bubble b-ai" x-text="it.detail.answer"></div></div>
+            </div>
+            <div x-show="it.status==='open' && !edit[it.id]" class="flex flex-wrap gap-2">
+              <button class="btn btn-primary" :disabled="!!busy[it.id]" @click="faqOk(it)">الإجابة سليمة</button>
+              <button class="btn btn-ghost" :disabled="!!busy[it.id]" @click="openEdit(it)">تحتاج تصحيح</button>
+            </div>
+            <div x-show="edit[it.id]" class="space-y-2">
+              <label class="block"><span class="lbl block">السؤال</span>
+                <input class="field" x-model="form[it.id].q" maxlength="500"></label>
+              <label class="block"><span class="lbl block">الإجابة الصحيحة</span>
+                <textarea class="field" rows="4" x-model="form[it.id].a" maxlength="2000"></textarea></label>
+              <div class="flex gap-2">
+                <button class="btn btn-primary" :disabled="!!busy[it.id] || !valid(it)" @click="faqFix(it)">احفظ التصحيح</button>
+                <button class="btn btn-quiet" @click="edit[it.id]=false">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <p class="text-xs" style="color:#b42318" x-show="err[it.id]" x-text="err[it.id]"></p>
+        <div x-show="it.status==='done' && isOpen(it)"><button class="btn-quiet text-xs" @click="collapse(it)">إخفاء</button></div>
+      </div>
+    </section>
+  </template>
+</main>
+
+<script>
+function todayApp() {
+  return {
+    loading: true, error: '', identity: true, me: '', date: '', items: [], total: 0, done: 0,
+    form: {}, edit: {}, busy: {}, err: {}, rejecting: {}, opened: {},
+
+    get dayLabel() {
+      if (!this.date) return '';
+      try { return new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { weekday:'long', day:'numeric', month:'long' })
+              .format(new Date(this.date + 'T12:00:00')); } catch { return this.date; }
+    },
+    get remainingLabel() {
+      const left = this.total - this.done;
+      if (left <= 0) return 'اكتملت';
+      const min = Math.max(1, Math.round(left * 1.8));
+      return `باقي ${left} · نحو ${min} دقيقة`;
+    },
+
+    async init() { await this.load(); },
+
+    async load() {
+      this.loading = true; this.error = '';
+      try {
+        const qs = new URLSearchParams(location.search).get('date');
+        const r = await fetch('/products/api/captain/review/mine' + (qs ? '?date=' + encodeURIComponent(qs) : ''),
+                              { headers: { Accept: 'application/json' } });
+        if (!r.ok) throw new Error('رمز ' + r.status);
+        const d = await r.json();
+        this.identity = d.identity !== false; this.me = d.me || ''; this.date = d.date;
+        for (const it of d.items) {
+          if (!this.form[it.id]) {
+            const x = it.detail || {};
+            this.form[it.id] = it.item_type === 'reply' ? { q: (x.question || '').trim(), a: '' }
+              : it.item_type === 'suggestion' ? { q: x.suggested_question || '', a: x.suggested_answer || '', reason: '' }
+              : { q: x.question || '', a: x.answer || '' };
+          }
+        }
+        this.items = d.items; this.total = d.total; this.done = d.done;
+      } catch (e) { this.error = e.message; }
+      this.loading = false;
+    },
+
+    current() { return this.items.find(i => i.status === 'open'); },
+    isCurrent(it) { const c = this.current(); return c && c.id === it.id; },
+    isOpen(it) { return !!this.opened[it.id]; },
+    expand(it) { this.opened[it.id] = true; },
+    collapse(it) { this.opened[it.id] = false; },
+    openEdit(it) { this.edit[it.id] = true; this.err[it.id] = ''; },
+    valid(it) { const f = this.form[it.id] || {}; return (f.q || '').trim().length > 2 && (f.a || '').trim().length > 2; },
+    count(o) { return this.items.filter(i => i.outcome === o).length; },
+
+    typeLabel(t) { return { reply: 'ردّ للتأكد منه', suggestion: 'اقتراح تعلّم', faq: 'سؤال شائع للمراجعة' }[t] || t; },
+    outcomeLabel(it) {
+      const m = { ok: 'صحيح', corrected: 'صُحّح', approved: 'اعتُمد', rejected: 'رُفض', reviewed: 'سليم', deleted: 'حُذف' };
+      const by = it.done_by_name && it.done_by_email && this.me && it.done_by_name !== this.me ? ' · ' + it.done_by_name : '';
+      return (m[it.outcome] || 'تم') + by;
+    },
+    outcomeStyle(o) {
+      return o === 'corrected' ? 'background:#fdf3e1;color:#8a5a00'
+           : (o === 'rejected' || o === 'deleted') ? 'background:#f2f2f2;color:#555'
+           : 'background:#e7f1ea;color:#2f5a3e';
+    },
+    summary(it) {
+      const d = it.detail || {};
+      return it.item_type === 'reply' ? (d.question || '') : it.item_type === 'suggestion' ? (d.suggested_question || '') : (d.question || '');
+    },
+    convUrl(id) { return location.origin + '/app/accounts/1/conversations/' + id; },
+
+    async call(it, url, method, body) {
+      this.busy[it.id] = true; this.err[it.id] = '';
+      try {
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                                     body: body ? JSON.stringify(body) : undefined });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || ('رمز ' + r.status));
+        return d;
+      } catch (e) { this.err[it.id] = 'لم يُحفظ: ' + e.message; throw e; }
+      finally { this.busy[it.id] = false; }
+    },
+    async after(it) {
+      this.edit[it.id] = false; this.rejecting[it.id] = false;
+      await this.load();
+      const n = this.current();
+      if (n) this.$nextTick(() => document.getElementById('item-' + n.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    },
+
+    async replyOk(it) { await this.call(it, `/products/api/captain/review/items/${it.id}/ok`, 'POST'); await this.after(it); },
+    async replyTeach(it) {
+      const f = this.form[it.id];
+      await this.call(it, '/products/api/captain/replies/teach', 'POST',
+                      { question: f.q.trim(), answer: f.a.trim(), source_msg_id: it.ref_id });
+      await this.after(it);
+    },
+    async sugApprove(it) {
+      const f = this.form[it.id];
+      await this.call(it, `/products/api/captain/learn/suggestions/${it.ref_id}/approve`, 'POST',
+                      { question: f.q.trim(), answer: f.a.trim() });
+      await this.after(it);
+    },
+    async sugReject(it) {
+      await this.call(it, `/products/api/captain/learn/suggestions/${it.ref_id}/reject`, 'POST', { reason: this.form[it.id].reason });
+      await this.after(it);
+    },
+    async faqOk(it) {
+      await this.call(it, `/products/api/captain/faqs/${it.ref_id}/reviewed`, 'PATCH', { reviewed: true });
+      await this.after(it);
+    },
+    async faqFix(it) {
+      const f = this.form[it.id];
+      await this.call(it, `/products/api/captain/faqs/${it.ref_id}`, 'PUT', { question: f.q.trim(), answer: f.a.trim() });
+      await this.call(it, `/products/api/captain/faqs/${it.ref_id}/reviewed`, 'PATCH', { reviewed: true });
+      await this.after(it);
+    },
+  };
+}
+</script>
+</body>
+</html>

@@ -54,11 +54,14 @@ const log = m => console.log('[reconcile] ' + m);
   const liveSet = new Set(live.map(p => String(p.salla_id)));
 
   // ---- MASTER (Postgres) ----
-  const UP = "INSERT INTO master_products (salla_id,name,sku,price_regular,price_discounted,quantity_available,status,image_url,description,category_main,product_url,is_active,deleted_at,source,last_synced_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,NULL,'salla_reconcile',now(),now()) ON CONFLICT (salla_id) DO UPDATE SET name=EXCLUDED.name,sku=EXCLUDED.sku,price_regular=EXCLUDED.price_regular,price_discounted=EXCLUDED.price_discounted,quantity_available=EXCLUDED.quantity_available,status=EXCLUDED.status,image_url=EXCLUDED.image_url,description=EXCLUDED.description,category_main=EXCLUDED.category_main,product_url=EXCLUDED.product_url,is_active=true,deleted_at=NULL,last_synced_at=now(),updated_at=now()";
+  const UP = "INSERT INTO master_products (salla_id,name,sku,price_regular,price_discounted,quantity_available,status,image_url,description,category_main,product_url,taxable,variants_json,is_active,deleted_at,source,last_synced_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,true,NULL,'salla_reconcile',now(),now()) ON CONFLICT (salla_id) DO UPDATE SET name=EXCLUDED.name,sku=EXCLUDED.sku,price_regular=EXCLUDED.price_regular,price_discounted=EXCLUDED.price_discounted,quantity_available=EXCLUDED.quantity_available,status=EXCLUDED.status,image_url=EXCLUDED.image_url,description=EXCLUDED.description,category_main=EXCLUDED.category_main,product_url=EXCLUDED.product_url,taxable=EXCLUDED.taxable,variants_json=COALESCE(EXCLUDED.variants_json,master_products.variants_json),is_active=true,deleted_at=NULL,last_synced_at=now(),updated_at=now()";
   let mUp = 0;
   for (const p of live) {
     const qty = p.quantity != null ? Number(p.quantity) : (p.availability === 'in' ? 100 : 0);
-    await db.query(UP, [String(p.salla_id), p.name ?? null, p.sku ?? null, num(p.price), num(p.sale_price), qty, p.status ?? null, p.image_url ?? null, p.description ?? null, p.category ?? null, p.product_url ?? null]);
+    await db.query(UP, [String(p.salla_id), p.name ?? null, p.sku ?? null, num(p.price), num(p.sale_price), qty, p.status ?? null, p.image_url ?? null, p.description ?? null, p.category ?? null, p.product_url ?? null,
+      // 2026-11-04: VAT flag + per-SKU prices (pre-tax, as Salla returns them) for the Captain tool
+      p.with_tax === false ? false : true,
+      Array.isArray(p.variants) ? JSON.stringify(p.variants) : null]);
     mUp++;
   }
   const act = await db.query("SELECT salla_id FROM master_products WHERE deleted_at IS NULL");

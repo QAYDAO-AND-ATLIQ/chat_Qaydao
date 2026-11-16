@@ -14,8 +14,10 @@ const db = require('./db-pg');
 const adapters = require('./adapters');
 const syncEngine = require('./sync-engine');
 const captain = require('./captain-manager');
+const captainReview = require('./captain-review'); // 2026-11-17 مراجعة الكابتن اليومية
 const unifiedImport = require('./unified-import');
 const stockEnrich = require('./stock-enrich');
+const priceFormat = require('./price-format'); // 2026-11-04 VAT-inclusive + variant range for Captain
 const hubPublish = require('./hub-publish'); // حبة 2b — ناشر اللوحة → Hub
 
 const PORT = process.env.PORT || 3601;
@@ -83,14 +85,18 @@ async function chatwootIdentity(req) {
 // ═══ Audit log (fire-and-forget — never breaks the action itself) ═══
 function logAudit(req, action, summary, opts = {}) {
   const a = req.actor || { id: null, name: 'unknown', verified: false };
-  db.query(
+  return db.query(
     `INSERT INTO captain_audit_log (actor_id, actor_name, verified, action, target_type, target_id, summary, details, ip)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
     [a.id, a.name, !!a.verified, action, opts.target_type || null,
      opts.target_id != null ? String(opts.target_id) : null,
      summary, opts.details ? JSON.stringify(opts.details) : null,
      (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim()]
-  ).catch(e => console.error('[audit]', e.message));
+  ).catch(e => console.error('[audit]', e.message))
+  // 2026-11-17: كل إجراء حقيقي يغلق بند «مراجعة الكابتن اليومية» المقابل (إن وُجد) باسم من نفّذه
+  .then(() => (action === 'faq.review' && opts.details && opts.details.reviewed === false) ? null
+    : captainReview.markFromAudit(a, action, opts.target_type, opts.target_id))
+  .catch(e => console.error('[captain-review]', e.message));
 }
 
 async function requireAuth(req, res, next) {
@@ -138,7 +144,7 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
       rows = await db.all(`
         SELECT id, salla_id, sku, name, description, short_desc, category_path, category_main,
                product_type, price_regular, price_discounted, status, quantity_available,
-               promo_label, weight, weight_unit, image_url, product_url, 1.0 AS name_score
+               promo_label, weight, weight_unit, image_url, product_url, taxable, variants_json, 1.0 AS name_score
         FROM master_products
         WHERE deleted_at IS NULL AND is_active = TRUE
           AND status IS DISTINCT FROM 'مخفي' AND status IS DISTINCT FROM 'غير متاح'
@@ -153,7 +159,7 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
           SELECT DISTINCT ON (LOWER(TRIM(name)))
                  id, salla_id, sku, name, description, short_desc, category_path, category_main,
                product_type, price_regular, price_discounted, status, quantity_available,
-               promo_label, weight, weight_unit, image_url, product_url,
+               promo_label, weight, weight_unit, image_url, product_url, taxable, variants_json,
                  similarity(name, $1) AS name_score
           FROM master_products
           WHERE deleted_at IS NULL
@@ -161,7 +167,7 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
             AND status IS DISTINCT FROM 'مخفي' AND status IS DISTINCT FROM 'غير متاح'
             AND (name % $1 OR name ILIKE $2 OR description ILIKE $2)
             AND ($3::TEXT IS NULL OR category_path ILIKE '%' || $3 || '%')
-            AND ($4::NUMERIC IS NULL OR price_regular <= $4)
+            AND ($4::NUMERIC IS NULL OR COALESCE(NULLIF(price_discounted,0), price_regular) * (CASE WHEN taxable IS FALSE THEN 1 ELSE 1.15 END) <= $4)
           ORDER BY LOWER(TRIM(name)), similarity(name, $1) DESC NULLS LAST,
                    quantity_available DESC NULLS LAST
         ) sub
@@ -174,8 +180,8 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
     const products = rows.map(p => {
       const label = (p.promo_label || '') + ' ' + (p.product_type || '');
       const madeToOrder = /يصنع|يُصنع|حسب الطلب|تنفيذ/.test(label);
-      const price = Math.round(parseFloat(p.price_discounted || p.price_regular));
-      const orig = p.price_discounted ? Math.round(parseFloat(p.price_regular)) : null;
+      // 2026-11-04: prices are VAT-inclusive (as on qaydao.com) + variant range.
+      const pr = priceFormat.customerPrices(p);
       return {
         sku: p.sku,
         salla_id: p.salla_id,
@@ -183,9 +189,14 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
         // #3 full description (was truncated to 200) so any spec text is usable
         description: (p.description || p.short_desc || '').slice(0, 600),
         category: p.category_main,
-        price,
-        original_price: orig,
-        discount_pct: (orig && orig > price) ? Math.round((1 - price / orig) * 100) : null,
+        price: pr.price,
+        original_price: pr.original_price,
+        discount_pct: pr.discount_pct,
+        price_from: pr.price_from,
+        price_to: pr.price_to,
+        has_variant_prices: pr.has_variant_prices,
+        variants: pr.variants,
+        price_note: pr.price_note,
         status: p.status,
         type: p.promo_label,
         // #8 explicit delivery class for correct lead-time messaging
@@ -213,7 +224,7 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
       JSON.stringify({ category, max_price: maxPrice, result_count: products.length, top_product_id: rows[0]?.id })
     ]).catch(e => console.error('[AI Event log error]', e.message));
 
-    res.json({ success: true, query: q, count: products.length, products, response_time_ms: dt });
+    res.json({ success: true, query: q, count: products.length, vat_inclusive: true, currency: 'SAR', price_policy: priceFormat.PRICE_POLICY, products, response_time_ms: dt });
   } catch (err) {
     console.error('[Search]', err);
     res.status(500).json({ error: err.message });
@@ -909,7 +920,7 @@ app.post("/products/api/captain/replies/teach", requireAuth, async (req, res) =>
       question, answer, source_msg_id,
       reviewer: req.actor?.name || 'admin'
     });
-    logAudit(req, 'captain.teach', `علّم الكابتن رداً جديداً: «${String(question||'').slice(0,80)}»`,
+    await logAudit(req, 'captain.teach', `علّم الكابتن رداً جديداً: «${String(question||'').slice(0,80)}»`,
       { target_type: 'reply', target_id: source_msg_id, details: { question, answer: String(answer||'').slice(0,500) } });
     res.json(result);
   } catch (err) {
@@ -976,7 +987,7 @@ app.post("/products/api/captain/learn/suggestions/:id/approve", requireAuth, asy
     const result = await captain.approveLearningSuggestion(req.params.id, {
       question, answer, reviewer: req.actor?.name || 'admin'
     });
-    logAudit(req, 'learn.approve', `اعتمد اقتراح تعلم #${req.params.id}: «${String(question||'').slice(0,80)}»`,
+    await logAudit(req, 'learn.approve', `اعتمد اقتراح تعلم #${req.params.id}: «${String(question||'').slice(0,80)}»`,
       { target_type: 'suggestion', target_id: req.params.id, details: { question, answer: String(answer||'').slice(0,500) } });
     res.json(result);
   } catch (err) {
@@ -990,7 +1001,7 @@ app.post("/products/api/captain/learn/suggestions/:id/reject", requireAuth, asyn
     const result = await captain.rejectLearningSuggestion(req.params.id, {
       reason, reviewer: req.actor?.name || 'admin'
     });
-    logAudit(req, 'learn.reject', `رفض اقتراح تعلم #${req.params.id}${reason?` — السبب: ${String(reason).slice(0,80)}`:''}`,
+    await logAudit(req, 'learn.reject', `رفض اقتراح تعلم #${req.params.id}${reason?` — السبب: ${String(reason).slice(0,80)}`:''}`,
       { target_type: 'suggestion', target_id: req.params.id, details: { reason } });
     res.json(result);
   } catch (err) {
@@ -1078,7 +1089,7 @@ app.put("/products/api/captain/faqs/:id", requireAuth, async (req, res) => {
     const before = await captain.listFAQs().then(l => l.find(f => String(f.id) === String(req.params.id))).catch(() => null);
     const faq = await captain.updateFAQ(req.params.id, req.body);
     if (!faq) return res.status(404).json({ error: "FAQ not found" });
-    logAudit(req, 'faq.update', `صحّح/عدّل السؤال #${req.params.id}: «${String(req.body?.question||faq.question||'').slice(0,80)}»`,
+    await logAudit(req, 'faq.update', `صحّح/عدّل السؤال #${req.params.id}: «${String(req.body?.question||faq.question||'').slice(0,80)}»`,
       { target_type: 'faq', target_id: req.params.id,
         details: { before: before ? { question: before.question, answer: String(before.answer||'').slice(0,500) } : null,
                    after: { question: req.body?.question, answer: String(req.body?.answer||'').slice(0,500) } } });
@@ -1093,7 +1104,7 @@ app.patch("/products/api/captain/faqs/:id/reviewed", requireAuth, async (req, re
     const flag = req.body && req.body.reviewed === true;
     const faq = await captain.setFAQReviewed(req.params.id, flag);
     if (!faq) return res.status(404).json({ error: "FAQ not found" });
-    logAudit(req, 'faq.review', `${flag ? 'وسم السؤال كمُراجَع ✅' : 'ألغى مراجعة السؤال'} #${req.params.id}${faq.question ? `: «${String(faq.question).slice(0,80)}»` : ''}`,
+    await logAudit(req, 'faq.review', `${flag ? 'وسم السؤال كمُراجَع ✅' : 'ألغى مراجعة السؤال'} #${req.params.id}${faq.question ? `: «${String(faq.question).slice(0,80)}»` : ''}`,
       { target_type: 'faq', target_id: req.params.id, details: { reviewed: flag } });
     res.json({ success: true, faq });
   } catch (err) {
@@ -1104,7 +1115,7 @@ app.patch("/products/api/captain/faqs/:id/reviewed", requireAuth, async (req, re
 app.delete("/products/api/captain/faqs/:id", requireAuth, async (req, res) => {
   try {
     const ok = await captain.deleteFAQ(req.params.id);
-    logAudit(req, 'faq.delete', `حذف السؤال #${req.params.id}`,
+    await logAudit(req, 'faq.delete', `حذف السؤال #${req.params.id}`,
       { target_type: 'faq', target_id: req.params.id });
     res.json({ success: ok });
   } catch (err) {
@@ -1259,6 +1270,7 @@ app.get('/products/api/links/stock-by-salla', searchLimiter, async (req, res) =>
   }
 });
 
+require('./captain-review-routes').register(app, { requireAuth, logAudit });
 require('./links-router').register(app);
 require('./assign-on-reply').register(app);
 
