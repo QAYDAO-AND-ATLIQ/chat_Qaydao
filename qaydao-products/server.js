@@ -126,6 +126,9 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
   const category = String(req.query.category || '').trim() || null;
   const maxPrice = parseFloat(req.query.max_price) || null;
   const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+  const poolSize = Math.min(limit * 6, 40); // wider candidate pool so ready stock can be ranked first (2026-11-22)
+  // ready=1: only items with real stock in the warehouse (used by the «search_ready_stock» Captain tool)
+  const readyOnly = ['1', 'true'].includes(String(req.query.ready || '').toLowerCase());
   const sessionHash = req.query.session ? crypto.createHash('sha256').update(req.query.session).digest('hex') : null;
 
   if (!q || q.length < 2) {
@@ -174,10 +177,10 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
         ORDER BY (CASE WHEN quantity_available > 0 OR status = 'متاح' THEN 1 ELSE 0 END) DESC,
                  name_score DESC NULLS LAST, price_regular ASC
         LIMIT $5
-      `, [q, `%${q}%`, category, maxPrice, limit]);
+      `, [q, `%${q}%`, category, maxPrice, poolSize]);
     }
 
-    const products = rows.map(p => {
+    const toProduct = p => {
       const label = (p.promo_label || '') + ' ' + (p.product_type || '');
       const madeToOrder = /يصنع|يُصنع|حسب الطلب|تنفيذ/.test(label);
       // 2026-11-04: prices are VAT-inclusive (as on qaydao.com) + variant range.
@@ -199,17 +202,30 @@ app.get('/products/api/search', searchLimiter, async (req, res) => {
         price_note: pr.price_note,
         status: p.status,
         type: p.promo_label,
-        // #8 explicit delivery class for correct lead-time messaging
+        // #8 explicit delivery class — replaced by real warehouse stock below when the product has a code
         delivery_class: madeToOrder ? 'made_to_order' : 'ready',
-        delivery_estimate: madeToOrder ? '30-60 يوم (يُصنع حسب الطلب)' : '3-7 أيام (جاهز)',
+        delivery_estimate: madeToOrder ? stockEnrich.MTO_ESTIMATE : stockEnrich.READY_ESTIMATE,
         image: p.image_url,
         url: p.product_url,
-        availability: (p.quantity_available || 0) > 0 || p.status === 'متاح' ? 'متوفر' : 'غير متوفر'
+        availability: (p.quantity_available || 0) > 0 || p.status === 'متاح' ? 'متوفر' : 'غير متوفر',
+        _rank: 0
       };
-    });
+    };
 
-    // #stock: override delivery_class from REAL warehouse stock for LINKED products (safe fallback)
+    // 2026-11-22: real warehouse stock first.
+    // (1) a wider candidate pool from the text search, (2) in-stock warehouse items that match
+    // the query are added even if the text search missed them (not for exact link/id lookups),
+    // (3) stock from the warehouse decides delivery_class, (4) ready stock is ranked first,
+    // text relevance second. Warehouse down -> same results as before, nothing fails.
+    let products = rows.map((p, idx) => ({ ...toProduct(p), _rank: idx }));
+    if (!exactId) {
+      const extra = await stockEnrich.readyFromWarehouse(q, { exclude: products.map(p => p.salla_id).filter(Boolean), limit: readyOnly ? limit * 2 : limit });
+      products = products.concat(extra.map((p, idx) => ({ ...toProduct(p), _rank: rows.length + idx })));
+    }
     await stockEnrich.enrichDeliveryFromStock(products);
+    products.sort((a, b) => ((b.in_stock === true) - (a.in_stock === true)) || (a._rank - b._rank));
+    if (readyOnly) products = products.filter(p => p.in_stock === true);
+    products = products.slice(0, limit).map(({ _rank, ...rest }) => rest);
     const dt = Date.now() - t0;
 
     // Log to ai_events for ML
@@ -1262,7 +1278,7 @@ app.get('/products/api/links/stock-by-salla', searchLimiter, async (req, res) =>
       available_qty: total,
       warehouse,
       delivery_class: ready ? 'ready' : 'made_to_order',
-      delivery_estimate: ready ? '3-7 أيام (جاهز)' : '30-60 يوم (يُصنع حسب الطلب)'
+      delivery_estimate: ready ? stockEnrich.READY_ESTIMATE : stockEnrich.MTO_ESTIMATE
     });
   } catch (err) {
     console.error('[stock-by-salla]', err);

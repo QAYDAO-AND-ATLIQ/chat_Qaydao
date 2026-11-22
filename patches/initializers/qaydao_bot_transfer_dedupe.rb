@@ -31,6 +31,7 @@ Rails.application.config.to_prepare do
     def self.qaydao_transfer_dedupe_installed? = true
 
     before_create :qaydao_suppress_repeated_bot_transfer
+    after_create_commit :qaydao_mark_bot_purchase_intent
 
     private
 
@@ -56,6 +57,31 @@ Rails.application.config.to_prepare do
       Rails.logger.info("[qaydao-transfer-dedupe] conv ##{conversation_id} repeated bot transfer suppressed")
     rescue StandardError => e
       Rails.logger.warn("[qaydao-transfer-dedupe] conv ##{conversation_id} error -> allow (fail-open): #{e.message}")
+    end
+
+    # 2026-11-22: when QAYDAO AI hands a buyer to the team (purchase-intent rule: the bot writes
+    # «طلبك المسجّل للمتابعة: <code/model>» with no order number), label the conversation with the
+    # existing «عميل_محتمل» label and raise its priority so the team picks buyers up first.
+    # Post-purchase handoffs carry a 9-digit order number and are left as they are. Fail-open.
+    QAYDAO_INTENT_LINE = 'طلبك المسجّل للمتابعة'.freeze
+    QAYDAO_ORDER_NO_REGEX = /(?<!\d)[2-3]\d{8}(?!\d)/
+
+    def qaydao_mark_bot_purchase_intent
+      return unless outgoing?
+      return unless sender_type == 'Captain::Assistant'
+      text = content.to_s
+      public_intent = !private && text.include?(QAYDAO_INTENT_LINE) && !text.match?(QAYDAO_ORDER_NO_REGEX)
+      # the handoff tool records its reason as a private note, e.g. «نية شراء مؤكدة مع كود منتج: …»
+      private_intent = private && text.match?(/نية\s*(ال)?شراء|purchase intent/i)
+      return unless public_intent || private_intent
+
+      conv = conversation
+      return if conv.nil?
+      conv.add_labels(['عميل_محتمل'])
+      conv.update(priority: :high) unless %w[high urgent].include?(conv.priority.to_s)
+      Rails.logger.info("[qaydao-purchase-intent] conv ##{conversation_id} labelled عميل_محتمل + high priority")
+    rescue StandardError => e
+      Rails.logger.warn("[qaydao-purchase-intent] conv ##{conversation_id} error -> skipped (fail-open): #{e.message}")
     end
   end
 

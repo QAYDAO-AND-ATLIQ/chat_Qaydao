@@ -71,12 +71,12 @@ Rails.application.config.to_prepare do
       QAYDAO_RIYADH_OFFSET    = 3.hours
 
       QAYDAO_CHECK_MESSAGE = <<~MSG.strip
-        هل تحتاج أي مساعدة إضافية؟ 🌿
+        هل تحتاج أي مساعدة إضافية؟
         إن رغبت بمتابعة من فريق خدمة العملاء أخبرني وسأحوّلك مباشرة — وإن لم يصلني رد سأحوّل محادثتك للفريق ليتابعوا معك.
       MSG
 
       QAYDAO_HANDOFF_MESSAGE = <<~MSG.strip
-        تم تحويل محادثتك لفريق خدمة العملاء لمتابعتها معك 🌿
+        تم تحويل محادثتك لفريق خدمة العملاء لمتابعتها معك.
         أوقات العمل: من السبت إلى الخميس، من ٩ صباحاً حتى ٨ مساءً. وإن كانت رسالتك خارج هذه الأوقات فسيصلك الرد مع بداية الدوام في تمام ٩ صباحاً.
       MSG
 
@@ -193,6 +193,7 @@ Rails.application.config.to_prepare do
 
       def qaydao_handoff(conversation, inbox, reason)
         create_private_note(conversation, inbox, "Auto-handoff: #{reason}")
+        qaydao_mark_purchase_intent(conversation) if reason.to_s.start_with?('purchase intent')
         begin
           conversation.messages.create!(
             message_type: :outgoing,
@@ -209,6 +210,16 @@ Rails.application.config.to_prepare do
         conversation.bot_handoff!
       rescue StandardError => e
         Rails.logger.warn("[qaydao-noautoclose] conv ##{conversation&.id} handoff failed: #{e.message}")
+      end
+
+      # 2026-11-22: purchase-intent handoffs are buyers waiting — label them with the existing
+      # account label «عميل_محتمل» and raise priority so they surface first in the team queue.
+      # Fail-open: never blocks the handoff.
+      def qaydao_mark_purchase_intent(conversation)
+        conversation.add_labels(['عميل_محتمل'])
+        conversation.update(priority: :high) unless %w[high urgent].include?(conversation.priority.to_s)
+      rescue StandardError => e
+        Rails.logger.warn("[qaydao-noautoclose] conv ##{conversation&.id} purchase-intent mark failed: #{e.message}")
       end
 
       def qaydao_purchase_intent?(conversation)

@@ -22,7 +22,8 @@ done
 AR=/app/config/locales/ar.yml
 if [ -f "$AR" ]; then
   sed -i "s|auto_resolution_message: 'Resolving the conversation as it has been inactive for a while. Please start a new conversation if you need further assistance.'|auto_resolution_message: 'نسعد بخدمتك دائماً. سيتم إنهاء هذه المحادثة لعدم وجود نشاط لفترة. لا تتردد في بدء محادثة جديدة في أي وقت، وكواي داو في خدمتك.'|" "$AR"
-  sed -i "s|handoff: 'تحويل إلى وكيل آخر لمزيد من المساعدة.'|handoff: 'يسعدنا تحويلك إلى أحد ممثلي خدمة العملاء لمساعدتك بشكل أفضل. سيصلك الرد في أقرب وقت ضمن أوقات العمل. شكراً لتفهّمك.'|" "$AR"
+  # 2026-11-22: unified handoff text (Rami 2026-08-25) — any previous value of the captain handoff key is replaced (idempotent).
+  sed -i "s|^      handoff: '.*'$|      handoff: 'تم تحويل محادثتك لفريق خدمة العملاء لمتابعتها معك. أوقات العمل: من السبت إلى الخميس، من ٩ صباحاً حتى ٨ مساءً، وإن كانت رسالتك خارج هذه الأوقات فسيصلك الرد مع بداية الدوام في تمام ٩ صباحاً.'|" "$AR"
   echo "[qaydao-patch] ar.yml captain locale fixed"
 fi
 
