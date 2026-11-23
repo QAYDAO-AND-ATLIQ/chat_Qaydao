@@ -231,3 +231,8 @@ md5sum injection/qaydao-returns-tab.js /var/www/qaydao-injection/qaydao-returns-
 
 ## 2026-11-17 — POST /returns/api/requests و/attachment صارا يتطلبان require_team — منشور (نسخة /root/deploy_bk_tabby_lock_20261116_221736)
 - بلا هوية 401؛ فريقي (Bearer RETURNS_TEAM_API_TOKEN) يعمل. صورة الخدمة السابقة: returns-service-returns_service:pre-lock-20261116_221736. تحذير compose عن اسم مشروع المجلدات طبيعي — نفس returns_uploads/returns_pgdata.
+
+## 2026-11-22 — create_or_update
+- إعادة استخدام طلب مفتوح فقط عند تطابق conversation_id **ورقم الطلب** (btrim). رقم طلب مختلف = INSERT دائماً. السابق كتب فوق ~40 طلباً (بلاغ مروة).
+- عند التعديل لطريقة مرجعية (iban=NULL) يُفصل attachment_path/mime.
+- docker: `docker rm -f returns_service && docker compose up -d --no-deps returns_service` (المشروع الأصلي للحاويات returns_service).

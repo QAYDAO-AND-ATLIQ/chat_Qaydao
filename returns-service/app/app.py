@@ -429,13 +429,15 @@ async def create_or_update(body: ReturnIn, team: dict = Depends(require_team)): 
     async with p.acquire() as c:
         existing = None
         if body.conversation_id is not None:
+            # 2026-11-22: التعديل فقط لنفس المحادثة ونفس رقم الطلب. طلب لرقم طلب مختلف = طلب جديد دائماً
+            # (كان يكتب فوق طلب مفتوح لعميل آخر — بلاغ مروة: ضاعت طلبات بعد إعادة الرفع من نفس الصفحة).
             # Only reuse an OPEN request. Closed ones (rejected/done) are final and archived —
             # a re-submission for the same conversation creates a brand-new request.
             existing = await c.fetchrow(
                 """SELECT id FROM return_requests
-                    WHERE conversation_id=$1 AND status NOT IN ('rejected','done','cancelled')
+                    WHERE conversation_id=$1 AND btrim(COALESCE(order_number,''))=btrim(COALESCE($2,'')) AND status NOT IN ('rejected','done','cancelled')
                     ORDER BY id DESC LIMIT 1""",
-                body.conversation_id,
+                body.conversation_id, body.order_number,
             )
         rc = _parse_date(body.return_created_at)
         oo = _parse_date(body.original_order_at)
@@ -446,7 +448,9 @@ async def create_or_update(body: ReturnIn, team: dict = Depends(require_team)): 
                      return_created_at=$5, original_order_at=$6, reason=$7,
                      bank_name=$8, bank_account=$9, iban=$10, attachment_name=$11,
                      assignee=$12, created_by=COALESCE($13, created_by),
-                     refund_method=$14, refund_reference=$15
+                     refund_method=$14, refund_reference=$15,
+                     attachment_path=CASE WHEN $10::text IS NULL THEN NULL ELSE attachment_path END,
+                     attachment_mime=CASE WHEN $10::text IS NULL THEN NULL ELSE attachment_mime END
                    WHERE id=$1 RETURNING *""",
                 existing["id"], body.customer_name, body.order_number, body.order_amount,
                 rc, oo, body.reason, bank_name, bank_account, iban,
